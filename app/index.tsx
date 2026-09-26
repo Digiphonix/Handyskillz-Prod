@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  useWindowDimensions,
   Image,
   Linking,
   Platform,
@@ -699,30 +700,29 @@ function ChatWorkspace({ onBack, conversationId, onSelectConversation, onBrowseP
 }
 
 function WelcomeScreen() {
-  const { lime, onPrimary, styles } = useAppTheme();
+  const { styles } = useAppTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const imageSize = Math.max(1, Math.min(width - 48, (height - insets.top - insets.bottom) * 0.6));
   return (
-    <View style={[styles.welcomeScreen, { paddingTop: insets.top + 30, paddingBottom: insets.bottom + 24 }]}>
+    <ScrollView style={styles.welcomeScreen} contentContainerStyle={[styles.welcomeContent, { paddingTop: insets.top + 30, paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
       <View style={styles.welcomeGlow} />
       <View>
         <Text style={styles.welcomeBrand}>handy<Text style={styles.brandAccent}>skillz</Text></Text>
         <Text style={styles.welcomeKicker}>SKILL HUB · NIGERIA</Text>
       </View>
       <View style={styles.welcomeHero}>
-        <View style={styles.welcomeMark}><Feather name="zap" size={25} color={onPrimary} /></View>
+        <Image source={require('@/assets/images/handyskillz-wallpaper.png')} style={[styles.welcomeImage, { width: imageSize, height: imageSize }]} resizeMode="contain" accessibilityLabel="Handyskillz: learn, practice, earn" />
         <Text style={styles.welcomeTitle}>Find the right skill. Build what matters.</Text>
         <Text style={styles.welcomeCopy}>A trusted place to hire local experts, win meaningful work, and keep every conversation and payment protected.</Text>
-      </View>
-      <View style={styles.welcomeFeatures}>
-        {['Search expert profiles by skill and location', 'Review portfolios and save providers', 'Message providers through protected conversations'].map((item) => <View key={item} style={styles.welcomeFeature}><Feather name="check" size={14} color={lime} /><Text style={styles.welcomeFeatureText}>{item}</Text></View>)}
       </View>
       <View style={styles.welcomeActions}>
         <Pressable testID="create-account" onPress={() => router.push('/(auth)/sign-up')} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}><Text style={styles.primaryButtonText}>Create an account</Text></Pressable>
         <Pressable testID="login" onPress={() => router.push('/(auth)/sign-in')} style={({ pressed }) => [styles.welcomeSecondary, pressed && styles.pressed]}><Text style={styles.welcomeSecondaryText}>I already have an account</Text></Pressable>
       </View>
       <Text style={styles.welcomeLegal}>By continuing, you agree to use Handyskillz safely and keep transactions on-platform.</Text>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -1105,17 +1105,15 @@ function createStyles(activePalette: Palette) {
   checkCircleActive: { backgroundColor: lime },
   checkLabel: { color: text, fontSize: 12, fontFamily: 'Inter_500Medium', flex: 1 },
   checkStatus: { color: muted, fontSize: 10, fontFamily: 'Inter_400Regular' },
-  welcomeScreen: { flex: 1, backgroundColor: ink, paddingHorizontal: 24, justifyContent: 'space-between', overflow: 'hidden' },
+  welcomeScreen: { flex: 1, backgroundColor: ink },
+  welcomeContent: { flexGrow: 1, paddingHorizontal: 24, justifyContent: 'flex-start', gap: 8 },
   welcomeGlow: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: panelSoft, top: -110, right: -100, opacity: 0.7 },
   welcomeBrand: { color: text, fontSize: 20, fontFamily: 'Inter_700Bold', letterSpacing: -0.5 },
   welcomeKicker: { color: accentText, fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1.6, marginTop: 9 },
-  welcomeHero: { gap: 13, marginTop: 24 },
-  welcomeMark: { width: 54, height: 54, borderRadius: 18, backgroundColor: lime, alignItems: 'center', justifyContent: 'center' },
+  welcomeHero: { gap: 8 },
+  welcomeImage: { borderRadius: 18, alignSelf: 'center' },
   welcomeTitle: { color: text, fontSize: 36, lineHeight: 41, fontFamily: 'Inter_700Bold', letterSpacing: -1.4, maxWidth: 340 },
   welcomeCopy: { color: muted, fontSize: 14, lineHeight: 21, fontFamily: 'Inter_400Regular', maxWidth: 330 },
-  welcomeFeatures: { gap: 13, marginTop: 12 },
-  welcomeFeature: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  welcomeFeatureText: { color: text, fontSize: 12, fontFamily: 'Inter_500Medium' },
   welcomeActions: { gap: 9, marginTop: 12 },
   welcomeSecondary: { height: 50, borderRadius: 25, borderWidth: 1, borderColor: activePalette.border, alignItems: 'center', justifyContent: 'center' },
   welcomeSecondaryText: { color: text, fontSize: 12, fontFamily: 'Inter_600SemiBold' },
