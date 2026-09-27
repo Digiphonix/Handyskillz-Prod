@@ -3,7 +3,7 @@ import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, T
 import colors from '@/constants/colors';
 
 type Palette = typeof colors.dark;
-type Job = { id: string; title: string; description: string; category: string; location?: string | null; budget_min_ngn?: number | null; budget_max_ngn?: number | null; status: string; selected_provider_id?: string | null };
+type Job = { customer_id: string; id: string; title: string; description: string; category: string; location?: string | null; budget_min_ngn?: number | null; budget_max_ngn?: number | null; status: string; selected_provider_id?: string | null };
 type Bid = { id: string; provider_id: string; amount_ngn: number; message: string; status: string; profiles?: { display_name?: string; role?: string; city?: string; rating?: number } | null };
 type Payment = { amount_ngn: number; amount_released_ngn: number; status: string; release_status: string; funded_at?: string | null; released_at?: string | null };
 
@@ -40,12 +40,12 @@ export default function JobProposalModal({ visible, job, role, userId, email, on
 
   const load = async () => {
     if (!job) return;
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setBids([]); setCanManage(false); setPayment(null);
     try {
       const payload = await request(`/jobs/${encodeURIComponent(job.id)}/bids`);
       setBids(Array.isArray(payload.bids) ? payload.bids : []);
       setCanManage(Boolean(payload.canManage));
-      setJobStatus(job.status);
+      setJobStatus(payload.jobStatus || job.status);
       if (payload.canManage || job.selected_provider_id === userId) {
         const paymentPayload = await request(`/jobs/${encodeURIComponent(job.id)}/payment`);
         setPayment(paymentPayload.payment || null);
@@ -121,8 +121,9 @@ export default function JobProposalModal({ visible, job, role, userId, email, on
       {job ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={[styles.meta, { color: palette.mutedForeground }]}>{job.category} · {job.location || 'Location not set'}{job.budget_max_ngn ? ` · Budget up to ₦${Number(job.budget_max_ngn).toLocaleString()}` : ''}</Text>
         <Text style={[styles.description, { color: palette.foreground }]}>{job.description}</Text>
+        {job.customer_id !== userId && (job.status === 'open' || isSelectedProvider) ? <Pressable accessibilityRole="button" onPress={() => { onClose(); onStartConversation(job.customer_id, job.id); }} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>Enquire / Chat with poster</Text></Pressable> : null}
         {['matched', 'in_progress'].includes(jobStatus) ? <Pressable accessibilityRole="button" onPress={() => onTrackJob(job.id)} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{isSelectedProvider ? 'Share location / Job tracking' : 'Track provider on map'}</Text></Pressable> : null}
-        {providerMode && jobStatus === 'open' ? <View style={[styles.proposalForm, { borderColor: palette.border }]}>
+        {providerMode && job.customer_id !== userId && jobStatus === 'open' ? <View style={[styles.proposalForm, { borderColor: palette.border }]}>
           <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Submit or update your proposal</Text>
           <TextInput value={amount} onChangeText={setAmount} keyboardType="number-pad" placeholder="Your price in NGN" placeholderTextColor={palette.mutedForeground} style={inputStyle} />
           <TextInput value={message} onChangeText={setMessage} multiline maxLength={3000} placeholder="Explain your experience and approach" placeholderTextColor={palette.mutedForeground} style={[inputStyle, styles.multiline]} />

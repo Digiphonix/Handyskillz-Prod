@@ -21,6 +21,10 @@ export default function CreateOpportunityModal({ visible, onClose, onCreated, ge
     style={[styles.input, { color: palette.foreground, backgroundColor: palette.background, borderColor: palette.border }, multiline && styles.multiline]} />;
 
   const publish = async () => {
+    if (busy) return;
+    const min = draft.budgetMinNgn.trim() ? Number(draft.budgetMinNgn.replace(/,/g, '')) : null;
+    const max = draft.budgetMaxNgn.trim() ? Number(draft.budgetMaxNgn.replace(/,/g, '')) : null;
+    if ((min !== null && (!Number.isFinite(min) || min < 0)) || (max !== null && (!Number.isFinite(max) || max < 0)) || (min !== null && max !== null && min > max)) { setError('Enter valid budgets, with the maximum at least the minimum.'); return; }
     if (!draft.title.trim() || !draft.description.trim() || !draft.category.trim()) { setError('Add a title, description and category.'); return; }
     setBusy(true); setError('');
     try {
@@ -32,8 +36,8 @@ export default function CreateOpportunityModal({ visible, onClose, onCreated, ge
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...draft,
-          budgetMinNgn: draft.budgetMinNgn ? Number(draft.budgetMinNgn) : null,
-          budgetMaxNgn: draft.budgetMaxNgn ? Number(draft.budgetMaxNgn) : null,
+          budgetMinNgn: min,
+          budgetMaxNgn: max,
         }),
       });
       const payload = await response.json();
@@ -43,11 +47,11 @@ export default function CreateOpportunityModal({ visible, onClose, onCreated, ge
     finally { setBusy(false); }
   };
 
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { if (!busy) onClose(); }}>
     <View style={styles.backdrop}><View style={[styles.sheet, { backgroundColor: palette.card }]}>
       <View style={[styles.handle, { backgroundColor: palette.mutedForeground }]} />
-      <Text style={[styles.title, { color: palette.foreground }]}>Post an opportunity</Text>
-      <Text style={[styles.subtitle, { color: palette.mutedForeground }]}>Publish a real listing for providers to find.</Text>
+      <Text style={[styles.title, { color: palette.foreground }]}>Post a job</Text>
+      <Text style={[styles.subtitle, { color: palette.mutedForeground }]}>Your job appears in Open jobs and your posted listings. People can enquire through chat.</Text>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.fields}>
         {field('title', 'What needs to be done?')}
         {field('description', 'Describe the scope and expectations', true)}
@@ -56,7 +60,7 @@ export default function CreateOpportunityModal({ visible, onClose, onCreated, ge
         <View style={styles.row}>{field('budgetMinNgn', 'Min budget (₦)', false, true)}{field('budgetMaxNgn', 'Max budget (₦)', false, true)}</View>
         {error ? <Text style={[styles.error, { color: palette.destructive }]}>{error}</Text> : null}
         <View style={styles.row}>
-          <Pressable onPress={onClose} style={[styles.button, { borderWidth: 1, borderColor: palette.border }]}><Text style={[styles.buttonText, { color: palette.foreground }]}>Cancel</Text></Pressable>
+          <Pressable disabled={busy} onPress={onClose} style={[styles.button, { borderWidth: 1, borderColor: palette.border }]}><Text style={[styles.buttonText, { color: palette.foreground }]}>Cancel</Text></Pressable>
           <Pressable onPress={() => void publish()} disabled={busy} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{busy ? 'Publishing…' : 'Publish'}</Text></Pressable>
         </View>
       </ScrollView>

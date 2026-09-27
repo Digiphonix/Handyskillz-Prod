@@ -19,11 +19,11 @@ router.get("/jobs", requireAuth, async (req, res) => {
     if (profileError) throw profileError;
     if (!profile) { res.status(404).json({ error: "Complete your profile before viewing work" }); return; }
     const isAdmin = profile.role === "admin" && (await isPlatformAdmin(userId));
-    const isHiringRole = profile.role === "customer" || profile.role === "business";
+    const postedBy = typeof req.query.postedBy === "string" ? req.query.postedBy.trim() : "";
     let query = supabase.from("jobs").select("*").order("created_at", { ascending: false }).limit(100);
-    if (isHiringRole) query = query.eq("customer_id", userId);
-    else if (!isAdmin && status !== "open" && statuses.has(status)) query = query.eq("selected_provider_id", userId);
-    else if (!isAdmin) query = query.eq("status", "open");
+    if (postedBy) query = query.eq("customer_id", postedBy).eq("status", "open");
+    else if (status === "open" || !statuses.has(status)) query = query.eq("status", "open");
+    else if (!isAdmin) query = query.or(`customer_id.eq.${userId},selected_provider_id.eq.${userId}`);
     if (statuses.has(status)) query = query.eq("status", status);
     if (search) query = query.ilike("title", `%${search}%`);
     if (location) query = query.ilike("location", `%${location}%`);
@@ -46,17 +46,17 @@ router.post("/jobs", requireAuth, async (req, res) => {
       res.status(400).json({ error: "Title, description and category are required" });
       return;
     }
-    const budgetMin = Number(body.budgetMinNgn);
-    const budgetMax = Number(body.budgetMaxNgn);
-    if ((Number.isFinite(budgetMin) && budgetMin < 0) || (Number.isFinite(budgetMax) && budgetMax < 0)) {
-      res.status(400).json({ error: "Budget cannot be negative" });
+    const budgetMin = body.budgetMinNgn == null || body.budgetMinNgn === "" ? null : Number(body.budgetMinNgn);
+    const budgetMax = body.budgetMaxNgn == null || body.budgetMaxNgn === "" ? null : Number(body.budgetMaxNgn);
+    if ((budgetMin !== null && (!Number.isFinite(budgetMin) || budgetMin < 0)) || (budgetMax !== null && (!Number.isFinite(budgetMax) || budgetMax < 0)) || (budgetMin !== null && budgetMax !== null && budgetMin > budgetMax)) {
+      res.status(400).json({ error: "Enter valid budgets with the maximum at least the minimum" });
       return;
     }
     const supabase = requireSupabase();
     const { data: profile, error: profileError } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
     if (profileError) throw profileError;
-    if (!profile || (profile.role !== "customer" && profile.role !== "business")) {
-      res.status(403).json({ error: "Only customer and business accounts can publish opportunities" });
+    if (!profile || !["customer", "artisan", "professional", "business"].includes(profile.role)) {
+      res.status(403).json({ error: "Customer and provider accounts can publish jobs" });
       return;
     }
     const { data, error } = await supabase.from("jobs").insert({
@@ -90,7 +90,7 @@ router.get("/jobs/:jobId", requireAuth, async (req, res) => {
     if (!job || !profile) { res.status(404).json({ error: "Job not found" }); return; }
     const isAdmin = profile.role === "admin" && (await isPlatformAdmin(userId));
     const participant = job.customer_id === userId || job.selected_provider_id === userId;
-    const providerCanViewOpenJob = job.status === "open" && ["artisan", "professional", "business"].includes(profile.role);
+    const providerCanViewOpenJob = job.status === "open";
     if (!isAdmin && !participant && !providerCanViewOpenJob) { res.status(404).json({ error: "Job not found" }); return; }
     res.json({ job });
   } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Could not load job" }); }
@@ -108,7 +108,7 @@ router.get("/jobs/:jobId/bids", requireAuth, async (req, res) => {
     if (!profile) { res.status(404).json({ error: "Complete your profile before viewing proposals" }); return; }
     let query = supabase.from("job_bids").select("id,job_id,provider_id,amount_ngn,message,status,created_at,profiles(id,display_name,role,city,avatar_url)").eq("job_id", req.params.jobId).order("created_at", { ascending: false });
     if (job.customer_id !== userId) {
-      if (["customer", "admin"].includes(profile.role)) { res.status(403).json({ error: "Only the job owner can review all proposals" }); return; }
+      if (["customer", "admin"].includes(profile.role)) { res.json({ bids: [], canManage: false, jobStatus: job.status }); return; }
       query = query.eq("provider_id", userId);
     }
     const { data, error } = await query;

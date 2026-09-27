@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, useUser } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import colors from '@/constants/colors';
+import { JobListings, ProviderJobsModal } from '@/components/JobListings';
 import JobTrackingModal from '@/components/tracking/JobTrackingModal';
 import AddressBookModal from '@/components/AddressBookModal';
 import ProfileEditorModal from '@/components/ProfileEditorModal';
@@ -77,7 +78,7 @@ const roleConfig: Record<Role, {
     icon: 'user',
     tabs: [
       { id: 'dashboard', label: 'Find providers', icon: 'home' },
-      { id: 'work', label: 'My Jobs', icon: 'briefcase' },
+      { id: 'work', label: 'Open jobs', icon: 'briefcase' },
       { id: 'chat', label: 'Chat', icon: 'message-circle' },
       { id: 'network', label: 'Saved', icon: 'bookmark' },
       { id: 'profile', label: 'Profile', icon: 'user' },
@@ -307,8 +308,8 @@ function MatchCard({ match, onPress }: { match: MatchRecord; onPress: () => void
   );
 }
 
-function CustomerDashboard({ onAction }: { onAction: (title: string, message: string) => void }) {
-  const { onPrimary, styles } = useAppTheme();
+function CustomerDashboard({ onAction, onOpenJob, onCreateOpportunity, onViewProvider, refreshKey }: { onAction: (title: string, message: string) => void; onOpenJob: (job: any) => void; onCreateOpportunity: () => void; onViewProvider: (provider: { id: string; name: string }) => void; refreshKey: number }) {
+  const { activePalette, onPrimary, styles } = useAppTheme();
   const { getToken } = useAuth();
   const [request, setRequest] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -369,18 +370,21 @@ function CustomerDashboard({ onAction }: { onAction: (title: string, message: st
       </View>
       <SectionHeader title={submitted ? 'Top matches for your request' : 'Search provider profiles'} />
       {loadingMatches ? <Text style={styles.communityRowMeta}>Searching provider profiles…</Text> : null}
-      {matches.map((match) => <MatchCard key={match.id} match={match} onPress={() => onAction(match.name, `${match.skill}\n${match.location} · ${match.price} · ${match.jobsCompleted} completed jobs`)} />)}
+      {matches.map((match) => <MatchCard key={match.id} match={match} onPress={() => onViewProvider({ id: match.id, name: match.name })} />)}
       {submitted && !loadingMatches && matches.length === 0 ? <Text style={styles.communityRowMeta}>No providers matched that search. Try another skill or location.</Text> : null}
       <Pressable onPress={() => void findMatches()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
         <Feather name="search" size={17} color={onPrimary} />
         <Text style={styles.primaryButtonText}>{submitted ? 'Refresh search' : 'Search providers'}</Text>
       </Pressable>
+      <SectionHeader title={submitted ? 'Matching open jobs' : 'Latest opportunities'} />
+      <JobListings getToken={getToken} palette={activePalette} onOpenJob={onOpenJob} search={submitted ? request : ''} refreshKey={refreshKey} />
+      <Pressable onPress={onCreateOpportunity} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Post a job</Text></Pressable>
       <View style={styles.spacer} />
     </ScrollView>
   );
 }
 
-function ProviderDashboard({ role, onOpenJob, onCreateOpportunity, onSeeAll, onReviewQueue }: { role: Exclude<Role, 'customer'>; onOpenJob: (job: any) => void; onCreateOpportunity: () => void; onSeeAll: () => void; onReviewQueue: () => void }) {
+function ProviderDashboard({ role, onOpenJob, onCreateOpportunity, onSeeAll, onReviewQueue, refreshKey, city }: { city?: string | null; refreshKey: number; role: Exclude<Role, 'customer'>; onOpenJob: (job: any) => void; onCreateOpportunity: () => void; onSeeAll: () => void; onReviewQueue: () => void }) {
   const { lime, accentText, onPrimary, muted, styles } = useAppTheme();
   const { getToken } = useAuth();
   const config = roleConfig[role];
@@ -388,7 +392,7 @@ function ProviderDashboard({ role, onOpenJob, onCreateOpportunity, onSeeAll, onR
   const [opportunities, setOpportunities] = useState<any[]>([]);
   const [adminOverview, setAdminOverview] = useState<any>(null);
   const [search, setSearch] = useState('');
-  const [locationFilter, setLocationFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState(city || '');
   const [showFilters, setShowFilters] = useState(false);
   const [loadError, setLoadError] = useState('');
   const apiBase = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '') || '';
@@ -412,7 +416,7 @@ function ProviderDashboard({ role, onOpenJob, onCreateOpportunity, onSeeAll, onR
       setLoadError('');
     } catch (error) { setLoadError(error instanceof Error ? error.message : 'Could not load opportunities.'); }
   };
-  useEffect(() => { void loadOpportunities(); }, [role, search, locationFilter]);
+  useEffect(() => { void loadOpportunities(); }, [role, search, locationFilter, refreshKey]);
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={false}>
       <View style={styles.greetingRow}>
@@ -425,8 +429,8 @@ function ProviderDashboard({ role, onOpenJob, onCreateOpportunity, onSeeAll, onR
         <View style={styles.metricCard}><Text style={styles.metricLabel}>{isAdmin ? 'Registered profiles' : 'Open opportunities'}</Text><Text style={styles.metricValue}>{isAdmin ? (adminOverview?.registeredProfiles ?? '—') : opportunities.length}</Text><Text style={styles.metricDelta}>{isAdmin ? `${adminOverview?.pendingVerifications ?? '—'} pending verifications` : 'Matching your search'}</Text></View>
         <View style={styles.metricCard}><Text style={styles.metricLabel}>{isAdmin ? 'Open jobs' : 'Search location'}</Text><Text style={[styles.metricValue, !isAdmin && styles.metricLabel]}>{isAdmin ? (adminOverview?.openJobs ?? '—') : locationFilter || 'All areas'}</Text><Text style={styles.metricDelta}>{isAdmin ? 'Current platform count' : 'Current opportunity filter'}</Text></View>
       </View>
-      {!isAdmin ? <SectionHeader title="Nearby opportunities" action="See All" onAction={onSeeAll} /> : null}
-      {opportunities.map((job) => (
+      {!isAdmin ? <SectionHeader title={locationFilter ? 'Nearby opportunities' : 'Latest opportunities'} action="See All" onAction={onSeeAll} /> : null}
+      {opportunities.slice(0, 3).map((job) => (
         <Pressable key={job.id} onPress={() => onOpenJob(job)} style={({ pressed }) => [styles.leadCard, pressed && styles.pressed]}>
           <View style={styles.leadIcon}><Feather name="briefcase" size={17} color={accentText} /></View>
           <View style={styles.leadCopy}><Text style={styles.leadTitle}>{job.title}</Text><Text style={styles.leadMeta}>{job.location || 'Remote'} · {job.category}</Text></View>
@@ -435,16 +439,16 @@ function ProviderDashboard({ role, onOpenJob, onCreateOpportunity, onSeeAll, onR
       ))}
       {!isAdmin && opportunities.length === 0 && !loadError ? <Text style={styles.communityRowMeta}>No open opportunities matched that search.</Text> : null}
       {loadError ? <Text style={styles.error}>{loadError}</Text> : null}
-      <Pressable onPress={() => { if (isAdmin) onReviewQueue(); else if (role === 'business') onCreateOpportunity(); else onSeeAll(); }} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+      <Pressable onPress={() => { if (isAdmin) onReviewQueue(); else onCreateOpportunity(); }} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
         <Feather name={isAdmin ? 'check-square' : 'plus'} size={17} color={onPrimary} />
-        <Text style={styles.primaryButtonText}>{isAdmin ? 'Review verification queue' : role === 'business' ? 'Post an opportunity' : 'Browse all opportunities'}</Text>
+        <Text style={styles.primaryButtonText}>{isAdmin ? 'Review verification queue' : 'Post a job'}</Text>
       </Pressable>
       <View style={styles.spacer} />
     </ScrollView>
   );
 }
 
-function WorkScreen({ role, onOpenJob }: { role: Role; onOpenJob: (job: any) => void }) {
+function WorkScreen({ role, onOpenJob, onCreateOpportunity, refreshKey }: { onCreateOpportunity: () => void; refreshKey: number; role: Role; onOpenJob: (job: any) => void }) {
   const { lime, muted, styles } = useAppTheme();
   const { getToken } = useAuth();
   const title = roleConfig[role].tabs.find((tab) => tab.id === 'work')?.label ?? 'My Work';
@@ -467,11 +471,13 @@ function WorkScreen({ role, onOpenJob }: { role: Role; onOpenJob: (job: any) => 
     } catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Could not load work.'); }
     finally { setLoading(false); }
   };
-  useEffect(() => { void loadJobs(); }, [role, status]);
+  useEffect(() => { setStatus('open'); }, [refreshKey]);
+  useEffect(() => { void loadJobs(); }, [role, status, refreshKey]);
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={false}>
       <View style={styles.simpleHeader}><Text style={styles.screenTitle}>{title}</Text><IconButton icon="refresh-cw" onPress={() => void loadJobs()} /></View>
-      <View style={styles.tabPills}>{[['open', 'Open'], ['matched', 'Matched'], ['in_progress', 'In progress'], ['completed', 'Completed']].map(([value, label]) => <Pressable key={value} onPress={() => setStatus(value)}><Text style={status === value ? styles.activePill : styles.inactivePill}>{label}</Text></Pressable>)}</View>
+      {role !== 'admin' ? <Pressable onPress={onCreateOpportunity} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Post a job</Text></Pressable> : null}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={styles.tabPills}>{[['open', 'Open'], ['matched', 'Matched'], ['in_progress', 'In progress'], ['completed', 'Completed']].map(([value, label]) => <Pressable key={value} onPress={() => setStatus(value)}><Text style={status === value ? styles.activePill : styles.inactivePill}>{label}</Text></Pressable>)}</View></ScrollView>
       {loading ? <Text style={styles.communityRowMeta}>Loading work…</Text> : null}
       {jobs.map((job) => (
         <Pressable key={job.id} onPress={() => onOpenJob(job)} style={({ pressed }) => [styles.workCard, pressed && styles.pressed]}>
@@ -487,7 +493,7 @@ function WorkScreen({ role, onOpenJob }: { role: Role; onOpenJob: (job: any) => 
   );
 }
 
-function NetworkScreen({ role, onAction, onStartConversation }: { role: Role; onAction: (title: string, message: string) => void; onStartConversation: (providerId: string) => void }) {
+function NetworkScreen({ role, onAction, onStartConversation, onViewProvider }: { onViewProvider: (provider: { id: string; name: string }) => void; role: Role; onAction: (title: string, message: string) => void; onStartConversation: (providerId: string) => void }) {
   const { lime, accentText, onPrimary, muted, styles } = useAppTheme();
   const { getToken } = useAuth();
   const title = roleConfig[role].tabs.find((tab) => tab.id === 'network')?.label ?? 'Network';
@@ -570,6 +576,7 @@ function NetworkScreen({ role, onAction, onStartConversation }: { role: Role; on
           <Pressable onPress={() => onAction(provider.display_name, `${provider.role} · ${provider.city || 'Location not set'}\n${(provider.skills || []).join(', ') || provider.bio || 'Handyskillz profile'}`)} style={[styles.communityRowCopy, { flex: 1 }]}>
             <Text style={styles.communityRowTitle}>{provider.display_name}</Text><Text style={styles.communityRowMeta}>{provider.role} · {provider.city || 'Location not set'} · {Number(provider.completed_jobs) || 0} completed jobs</Text>
           </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={`View jobs posted by ${provider.display_name}`} onPress={() => onViewProvider({ id: provider.id, name: provider.display_name })}><Feather name="briefcase" size={18} color={accentText} /></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={`Message ${provider.display_name}`} onPress={() => onStartConversation(provider.id)}><Feather name="message-circle" size={18} color={accentText} /></Pressable>
           {role === 'customer' ? <Pressable accessibilityRole="button" accessibilityLabel={savedIds.includes(provider.id) ? 'Remove saved provider' : 'Save provider'} onPress={() => void toggleSaved(provider.id)}><Feather name={savedIds.includes(provider.id) ? 'bookmark' : 'bookmark'} size={18} color={savedIds.includes(provider.id) ? lime : muted} /></Pressable> : null}
         </View>
@@ -710,11 +717,11 @@ function WelcomeScreen() {
   return (
     <ScrollView style={styles.welcomeScreen} contentContainerStyle={[styles.welcomeContent, { paddingTop: insets.top + 30, paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
       <View style={styles.welcomeGlow} />
-      <View>
+      <View style={{ width: imageSize, alignSelf: 'center' }}>
         <Text style={styles.welcomeBrand}>handy<Text style={styles.brandAccent}>skillz</Text></Text>
         <Text style={styles.welcomeKicker}>SKILL HUB · NIGERIA</Text>
       </View>
-      <View style={styles.welcomeHero}>
+      <View style={[styles.welcomeHero, { width: imageSize }]}>
         <Image source={require('@/assets/images/handyskillz-wallpaper.png')} style={[styles.welcomeImage, { width: imageSize, height: imageSize }]} resizeMode="contain" accessibilityLabel="Handyskillz: learn, practice, earn" />
         <Text style={styles.welcomeTitle}>Find the right skill. Build what matters.</Text>
         <Text style={styles.welcomeCopy}>A trusted place to hire local experts, win meaningful work, and keep every conversation and payment protected.</Text>
@@ -736,7 +743,7 @@ export default function Index() {
   const [storedRole, setRole] = useState<Role>('customer');
   const [canAccessAdmin, setCanAccessAdmin] = useState(false);
   const role = storedRole === 'admin' && !canAccessAdmin ? 'customer' : storedRole;
-  const [accountProfile, setAccountProfile] = useState<{ display_name?: string | null; avatar_url?: string | null } | null>(null);
+  const [accountProfile, setAccountProfile] = useState<{ display_name?: string | null; avatar_url?: string | null; city?: string | null } | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [showRoles, setShowRoles] = useState(false);
@@ -747,6 +754,8 @@ export default function Index() {
   const [showAddresses, setShowAddresses] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [showCreateOpportunity, setShowCreateOpportunity] = useState(false);
+  const [jobsVersion, setJobsVersion] = useState(0);
+  const [viewProvider, setViewProvider] = useState<{ id: string; name: string } | null>(null);
   const [showVerificationQueue, setShowVerificationQueue] = useState(false);
   const [showPayoutSettings, setShowPayoutSettings] = useState(false);
   const [showAvailability, setShowAvailability] = useState(false);
@@ -895,11 +904,11 @@ export default function Index() {
   };
   const content = useMemo(() => {
     if (screen === 'chat') return <ChatWorkspace conversationId={chatConversationId} onSelectConversation={setChatConversationId} onBack={() => { if (chatConversationId) setChatConversationId(null); else setScreen('dashboard'); }} onBrowseProviders={() => setScreen('network')} />;
-    if (screen === 'work') return <WorkScreen role={role} onOpenJob={setSelectedJob} />;
-    if (screen === 'network') return <NetworkScreen role={role} onAction={(title, message) => setActionModal({ title, message })} onStartConversation={startConversation} />;
+    if (screen === 'work') return <WorkScreen role={role} onOpenJob={setSelectedJob} onCreateOpportunity={() => setShowCreateOpportunity(true)} refreshKey={jobsVersion} />;
+    if (screen === 'network') return <NetworkScreen onViewProvider={setViewProvider} role={role} onAction={(title, message) => setActionModal({ title, message })} onStartConversation={startConversation} />;
     if (screen === 'profile') return <ProfileScreen role={role} displayName={accountProfile?.display_name?.trim() || user?.fullName || ''} avatarUrl={accountProfile?.avatar_url || user?.imageUrl} onRolePicker={() => setShowRoles(true)} themeMode={themeMode} onToggleTheme={toggleTheme} onSignOut={handleSignOut} onOpenAddresses={() => setShowAddresses(true)} onEditProfile={() => setShowProfileEditor(true)} onOpenNetwork={() => setScreen('network')} onOpenGuilds={() => setShowGuilds(true)} onOpenSecurity={() => setShowSecuritySessions(true)} onOpenPaymentHistory={() => setShowPaymentHistory(true)} onOpenTeam={() => setShowBusinessTeam(true)} onOpenPayout={() => setShowPayoutSettings(true)} onOpenAvailability={() => setShowAvailability(true)} onOpenSupport={() => setShowSupport(true)} onOpenNotifications={() => setShowNotifications(true)} onOpenPaymentTransfers={() => setShowAdminPaymentTransfers(true)} />;
-    return role === 'customer' ? <CustomerDashboard onAction={(title, message) => setActionModal({ title, message })} /> : <ProviderDashboard role={role} onOpenJob={setSelectedJob} onCreateOpportunity={() => setShowCreateOpportunity(true)} onSeeAll={() => setScreen('work')} onReviewQueue={() => setShowVerificationQueue(true)} />;
-  }, [role, screen, themeMode, chatConversationId, startConversation, accountProfile, user]);
+    return role === 'customer' ? <CustomerDashboard onOpenJob={setSelectedJob} onCreateOpportunity={() => setShowCreateOpportunity(true)} onViewProvider={setViewProvider} refreshKey={jobsVersion} onAction={(title, message) => setActionModal({ title, message })} /> : <ProviderDashboard city={accountProfile?.city} refreshKey={jobsVersion} role={role} onOpenJob={setSelectedJob} onCreateOpportunity={() => setShowCreateOpportunity(true)} onSeeAll={() => setScreen('work')} onReviewQueue={() => setShowVerificationQueue(true)} />;
+  }, [role, screen, themeMode, chatConversationId, startConversation, accountProfile, user, jobsVersion]);
 
   // Keep this after every hook. Clerk changes `isLoaded` as it initializes,
   // so returning before `useMemo` would change the hook order between renders.
@@ -917,7 +926,8 @@ export default function Index() {
       <ActionModal visible={Boolean(actionModal)} title={actionModal?.title ?? ''} message={actionModal?.message ?? ''} onClose={() => setActionModal(null)} />
       <AddressBookModal visible={showAddresses} onClose={() => setShowAddresses(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <ProfileEditorModal visible={showProfileEditor} onClose={() => setShowProfileEditor(false)} onSaved={setAccountProfile} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
-      <CreateOpportunityModal visible={showCreateOpportunity} onClose={() => setShowCreateOpportunity(false)} onCreated={() => setActionModal({ title: 'Opportunity published', message: 'Your listing is live for providers to review.' })} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
+      {viewProvider ? <ProviderJobsModal provider={viewProvider} onClose={() => setViewProvider(null)} onMessage={() => { const id = viewProvider.id; setViewProvider(null); void startConversation(id); }} onOpenJob={(job) => { setViewProvider(null); setSelectedJob(job); }} getToken={getToken} palette={colors[themeMode]} refreshKey={jobsVersion} /> : null}
+      <CreateOpportunityModal visible={showCreateOpportunity} onClose={() => setShowCreateOpportunity(false)} onCreated={() => { setJobsVersion((value) => value + 1); setScreen('work'); setActionModal({ title: 'Job published', message: 'Your job is now visible in Open jobs. People can view it and enquire through chat.' }); }} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <AdminVerificationQueueModal visible={showVerificationQueue} onClose={() => setShowVerificationQueue(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <PayoutSettingsModal visible={showPayoutSettings} onClose={() => setShowPayoutSettings(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <AvailabilityModal visible={showAvailability} onClose={() => setShowAvailability(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
@@ -1115,10 +1125,10 @@ function createStyles(activePalette: Palette) {
   welcomeGlow: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: panelSoft, top: -110, right: -100, opacity: 0.7 },
   welcomeBrand: { color: text, fontSize: 20, fontFamily: 'Inter_700Bold', letterSpacing: -0.5 },
   welcomeKicker: { color: accentText, fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1.6, marginTop: 9 },
-  welcomeHero: { gap: 8 },
+  welcomeHero: { gap: 8, alignSelf: 'center' },
   welcomeImage: { borderRadius: 18, alignSelf: 'center' },
-  welcomeTitle: { color: text, fontSize: 36, lineHeight: 41, fontFamily: 'Inter_700Bold', letterSpacing: -1.4, maxWidth: 340 },
-  welcomeCopy: { color: muted, fontSize: 14, lineHeight: 21, fontFamily: 'Inter_400Regular', maxWidth: 330 },
+  welcomeTitle: { color: text, fontSize: 36, lineHeight: 41, fontFamily: 'Inter_700Bold', letterSpacing: -1.4 },
+  welcomeCopy: { color: muted, fontSize: 14, lineHeight: 21, fontFamily: 'Inter_400Regular' },
   welcomeActions: { gap: 9, marginTop: 12 },
   welcomeSecondary: { height: 50, borderRadius: 25, borderWidth: 1, borderColor: activePalette.border, alignItems: 'center', justifyContent: 'center' },
   welcomeSecondaryText: { color: text, fontSize: 12, fontFamily: 'Inter_600SemiBold' },
@@ -1136,4 +1146,3 @@ function createStyles(activePalette: Palette) {
   signOutText: { color: activePalette.destructive, fontSize: 12, fontFamily: 'Inter_700Bold' },
   });
 }
-

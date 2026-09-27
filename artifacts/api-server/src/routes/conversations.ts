@@ -63,15 +63,20 @@ router.post("/conversations", requireAuth, async (req, res) => {
     if (!target) { res.status(404).json({ error: "Conversation participant not found" }); return; }
 
     if (jobId) {
-      const { data: existing, error } = await supabase.from("conversations").select("id").eq("job_id", jobId).maybeSingle();
-      if (error && error.code !== "PGRST116") throw error;
-      if (existing) {
-        const { data: members } = await supabase.from("conversation_members").select("profile_id").eq("conversation_id", existing.id);
-        if (members?.some((member) => member.profile_id === userId) && members.some((member) => member.profile_id === targetId)) {
-          res.json({ conversation: existing }); return;
-        }
+      const { data: existing, error } = await supabase.from("conversations").select("id").eq("job_id", jobId);
+      if (error) throw error;
+      const ids = (existing ?? []).map((item) => item.id);
+      if (ids.length) {
+        const { data: members, error: memberError } = await supabase.from("conversation_members").select("conversation_id,profile_id").in("conversation_id", ids);
+        if (memberError) throw memberError;
+        const match = ids.find((id) => {
+          const participants = (members ?? []).filter((member) => member.conversation_id === id);
+          return participants.length === 2 && participants.some((member) => member.profile_id === userId) && participants.some((member) => member.profile_id === targetId);
+        });
+        if (match) { res.json({ conversation: { id: match } }); return; }
       }
     }
+
     const { data: conversation, error: conversationError } = await supabase.from("conversations").insert({ job_id: jobId || null }).select("*").single();
     if (conversationError) throw conversationError;
     const { error: insertMembersError } = await supabase.from("conversation_members").insert([
