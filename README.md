@@ -14,6 +14,10 @@ Useful commands: `npm run android`, `npm run ios`, `npm run web`, `npm run check
 
 ## External service setup
 
+For a Render Free deployment, use the root `render.yaml` and follow
+[the Render deployment guide](docs/render-deployment.md). Keep Render's Root
+Directory empty so the API can install its local shared schema package.
+
 - Configure the Paystack webhook URL as `https://<your-api-host>/api/payments/paystack/webhook` so successful charges and provider transfers update job payment status. Set `PAYSTACK_CALLBACK_URL` in the API environment if checkout should return to a specific app or hosted page.
 - Remote push notifications require an EAS project ID in `EXPO_PUBLIC_EAS_PROJECT_ID` and valid APNs/FCM credentials in EAS. Build and install a native development or production app; push delivery does not work in Expo Go on current Expo SDKs. Web uses the in-app notification inbox.
 - `EXPO_ACCESS_TOKEN` in the API environment is optional and can authenticate server requests to Expo's push service.

@@ -1,6 +1,5 @@
 import trackingRouter from "./tracking";
 import { Router, type IRouter } from "express";
-import healthRouter from "./health";
 import profileRouter from "./profile";
 import uploadRouter from "./uploads";
 import paymentsRouter from "./payments";
@@ -17,7 +16,6 @@ import teamRouter from "./team";
 
 const router: IRouter = Router();
 
-router.use(healthRouter);
 router.use(trackingRouter);
 router.use(profileRouter);
 router.use(uploadRouter);

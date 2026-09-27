@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: handyskillz-api
+    runtime: node
+    plan: free
+    # Keep the repository root: the API uses lib/api-zod via a local file dependency.
+    buildCommand: npm ci --prefix artifacts/api-server --include=dev --install-links && npm run api:build
+    startCommand: npm --prefix artifacts/api-server run start
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_PROFILE_BUCKET
+        value: profile-media
