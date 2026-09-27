@@ -25,10 +25,18 @@ router.get("/network/providers/:profileId", requireAuth, async (req, res) => {
   try {
     const supabase = requireSupabase();
     const { data, error } = await supabase.from("profiles")
-      .select("id,role,display_name,city,bio,skills,avatar_url,completed_jobs,hourly_rate_ngn,years_experience,portfolio_items(id,title,description,image_url,project_url,sort_order)")
-      .eq("id", String(req.params.profileId)).eq("onboarding_complete", true).maybeSingle();
+      .select("id,role,display_name,city,bio,skills,avatar_url,completed_jobs,hourly_rate_ngn,years_experience,onboarding_complete,portfolio_items(id,title,description,image_url,project_url,sort_order)")
+      .eq("id", String(req.params.profileId)).maybeSingle();
     if (error) throw error;
-    if (!data || !providerRoles.has(data.role)) { res.status(404).json({ error: "Provider profile not found" }); return; }
+    if (!data) { res.status(404).json({ error: "Provider profile not found" }); return; }
+    // A provider may change their current account role after publishing a service.
+    // Keep the public service profile available while they still have an open offer.
+    if (!providerRoles.has(data.role) || !data.onboarding_complete) {
+      const { data: serviceOffer, error: serviceError } = await supabase.from("jobs")
+        .select("id").eq("customer_id", data.id).eq("listing_type", "service_offer").eq("status", "open").limit(1).maybeSingle();
+      if (serviceError) throw serviceError;
+      if (!serviceOffer) { res.status(404).json({ error: "Provider profile not found" }); return; }
+    }
     res.json({ profile: data });
   } catch (error) {
     res.status(503).json({ error: error instanceof Error ? error.message : "Provider profile unavailable" });
