@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, useUser } from '@clerk/expo';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import colors from '@/constants/colors';
 import { JobListings, ProviderJobsModal } from '@/components/JobListings';
 import JobTrackingModal from '@/components/tracking/JobTrackingModal';
@@ -38,6 +39,19 @@ import GuildsModal from '@/components/GuildsModal';
 import SecuritySessionsModal from '@/components/SecuritySessionsModal';
 import PaymentHistoryModal from '@/components/PaymentHistoryModal';
 import BusinessTeamModal from '@/components/BusinessTeamModal';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+const easProjectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim()
+  || Constants.expoConfig?.extra?.eas?.projectId
+  || Constants.easConfig?.projectId;
 
 type Role = 'customer' | 'artisan' | 'professional' | 'business' | 'admin';
 type Tab = 'dashboard' | 'work' | 'chat' | 'network' | 'profile';
@@ -806,6 +820,42 @@ export default function Index() {
     return () => { cancelled = true; };
   }, [isLoaded, isSignedIn, user?.id]);
 
+  useEffect(() => {
+    const platform = Platform.OS;
+    if (!isLoaded || !isSignedIn || !user?.id || (platform !== 'ios' && platform !== 'android') || !easProjectId) return;
+    let active = true;
+    void (async () => {
+      try {
+        if (platform === 'android') {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'General and chat',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#D0F34E',
+            sound: 'default',
+          });
+        }
+        let permission = await Notifications.getPermissionsAsync();
+        if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
+        if (!permission.granted || !active) return;
+
+        const pushToken = (await Notifications.getExpoPushTokenAsync({ projectId: easProjectId })).data;
+        const apiBase = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '') || '';
+        const authToken = await getToken();
+        if (!active || !apiBase || !authToken) return;
+        const response = await fetch(`${apiBase}/api/notifications/push-token`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: pushToken, platform }),
+        });
+        if (!response.ok) throw new Error('Push token registration failed.');
+      } catch (notificationError) {
+        console.warn('Could not enable push notifications', notificationError);
+      }
+    })();
+    return () => { active = false; };
+  }, [getToken, isLoaded, isSignedIn, user?.id]);
+
   const theme = useMemo(() => createTheme(colors[themeMode]), [themeMode]);
   const { styles } = theme;
 
@@ -819,7 +869,7 @@ export default function Index() {
   const handleSignOut = () => {
     void (async () => {
       try {
-        const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim();
+        const projectId = easProjectId;
         const apiBase = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '') || '';
         if (Platform.OS !== 'web' && projectId && apiBase) {
           const token = await getToken();
