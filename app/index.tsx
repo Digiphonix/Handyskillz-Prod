@@ -1,3 +1,4 @@
+import { formatListingPrice } from '@/constants/listings';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -111,9 +112,9 @@ const roleConfig: Record<Role, {
     icon: 'briefcase',
     tabs: [
       { id: 'dashboard', label: 'Business Ops', icon: 'home' },
-      { id: 'work', label: 'My Jobs', icon: 'briefcase' },
+      { id: 'work', label: 'Work', icon: 'briefcase' },
       { id: 'chat', label: 'Chat', icon: 'message-circle' },
-      { id: 'network', label: 'Vendors', icon: 'users' },
+      { id: 'network', label: 'Network', icon: 'users' },
       { id: 'profile', label: 'Profile', icon: 'user' },
     ],
   },
@@ -433,15 +434,15 @@ function ProviderDashboard({ role, onOpenJob, onCreateOpportunity, onSeeAll, onR
       {opportunities.slice(0, 3).map((job) => (
         <Pressable key={job.id} onPress={() => onOpenJob(job)} style={({ pressed }) => [styles.leadCard, pressed && styles.pressed]}>
           <View style={styles.leadIcon}><Feather name="briefcase" size={17} color={accentText} /></View>
-          <View style={styles.leadCopy}><Text style={styles.leadTitle}>{job.title}</Text><Text style={styles.leadMeta}>{job.location || 'Remote'} · {job.category}</Text></View>
-          <View style={styles.leadRight}><Text style={styles.leadBudget}>{job.budget_max_ngn ? `₦${Number(job.budget_max_ngn).toLocaleString()}` : 'Quote'}</Text><Feather name="chevron-right" size={16} color={muted} /></View>
+          <View style={styles.leadCopy}><Text style={styles.leadTitle}>{job.title}</Text><Text style={styles.leadMeta}>{job.listing_type === 'service_offer' ? 'Service offered - ' : 'Job request - '}{job.location || 'Remote'} · {job.category}</Text></View>
+          <View style={styles.leadRight}><Text style={styles.leadBudget}>{formatListingPrice(job)}</Text><Feather name="chevron-right" size={16} color={muted} /></View>
         </Pressable>
       ))}
       {!isAdmin && opportunities.length === 0 && !loadError ? <Text style={styles.communityRowMeta}>No open opportunities matched that search.</Text> : null}
       {loadError ? <Text style={styles.error}>{loadError}</Text> : null}
       <Pressable onPress={() => { if (isAdmin) onReviewQueue(); else onCreateOpportunity(); }} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
         <Feather name={isAdmin ? 'check-square' : 'plus'} size={17} color={onPrimary} />
-        <Text style={styles.primaryButtonText}>{isAdmin ? 'Review verification queue' : 'Post a job'}</Text>
+        <Text style={styles.primaryButtonText}>{isAdmin ? 'Review verification queue' : 'Offer a service'}</Text>
       </Pressable>
       <View style={styles.spacer} />
     </ScrollView>
@@ -476,14 +477,14 @@ function WorkScreen({ role, onOpenJob, onCreateOpportunity, refreshKey }: { onCr
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={false}>
       <View style={styles.simpleHeader}><Text style={styles.screenTitle}>{title}</Text><IconButton icon="refresh-cw" onPress={() => void loadJobs()} /></View>
-      {role !== 'admin' ? <Pressable onPress={onCreateOpportunity} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Post a job</Text></Pressable> : null}
+      {role !== 'admin' ? <Pressable onPress={onCreateOpportunity} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{role === 'customer' ? 'Post a job' : 'Offer a service'}</Text></Pressable> : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={styles.tabPills}>{[['open', 'Open'], ['matched', 'Matched'], ['in_progress', 'In progress'], ['completed', 'Completed']].map(([value, label]) => <Pressable key={value} onPress={() => setStatus(value)}><Text style={status === value ? styles.activePill : styles.inactivePill}>{label}</Text></Pressable>)}</View></ScrollView>
       {loading ? <Text style={styles.communityRowMeta}>Loading work…</Text> : null}
       {jobs.map((job) => (
         <Pressable key={job.id} onPress={() => onOpenJob(job)} style={({ pressed }) => [styles.workCard, pressed && styles.pressed]}>
           <View style={styles.workIcon}><Feather name="briefcase" size={19} color={lime} /></View>
-          <View style={styles.workCopy}><Text style={styles.workTitle}>{job.title}</Text><Text style={styles.workSubtitle}>{job.category} · {job.location || 'Remote'} · {job.status.replace('_', ' ')}</Text><View style={styles.progressTrack}><View style={[styles.progressFill, { width: job.status === 'completed' ? '100%' : '30%' }]} /></View></View>
-          <View style={styles.workAmount}><Text style={styles.workAmountText}>{job.budget_max_ngn ? `₦${Number(job.budget_max_ngn).toLocaleString()}` : 'Quote'}</Text><Feather name="chevron-right" size={16} color={muted} /></View>
+          <View style={styles.workCopy}><Text style={styles.workTitle}>{job.title}</Text><Text style={styles.workSubtitle}>{job.listing_type === 'service_offer' ? 'Service offered - ' : 'Job request - '}{job.category} · {job.location || 'Remote'} · {job.status.replace('_', ' ')}</Text><View style={styles.progressTrack}><View style={[styles.progressFill, { width: job.status === 'completed' ? '100%' : '30%' }]} /></View></View>
+          <View style={styles.workAmount}><Text style={styles.workAmountText}>{formatListingPrice(job)}</Text><Feather name="chevron-right" size={16} color={muted} /></View>
         </Pressable>
       ))}
       {!loading && jobs.length === 0 && !error ? <Text style={styles.communityRowMeta}>No work found for this status.</Text> : null}
@@ -927,7 +928,7 @@ export default function Index() {
       <AddressBookModal visible={showAddresses} onClose={() => setShowAddresses(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <ProfileEditorModal visible={showProfileEditor} onClose={() => setShowProfileEditor(false)} onSaved={setAccountProfile} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       {viewProvider ? <ProviderJobsModal provider={viewProvider} onClose={() => setViewProvider(null)} onMessage={() => { const id = viewProvider.id; setViewProvider(null); void startConversation(id); }} onOpenJob={(job) => { setViewProvider(null); setSelectedJob(job); }} getToken={getToken} palette={colors[themeMode]} refreshKey={jobsVersion} /> : null}
-      <CreateOpportunityModal visible={showCreateOpportunity} onClose={() => setShowCreateOpportunity(false)} onCreated={() => { setJobsVersion((value) => value + 1); setScreen('work'); setActionModal({ title: 'Job published', message: 'Your job is now visible in Open jobs. People can view it and enquire through chat.' }); }} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
+      <CreateOpportunityModal role={role} visible={showCreateOpportunity} onClose={() => setShowCreateOpportunity(false)} onCreated={() => { setJobsVersion((value) => value + 1); setScreen('work'); setActionModal({ title: role === 'customer' ? 'Job published' : 'Service published', message: role === 'customer' ? 'Your job is now visible in Open jobs. Providers can enquire and submit proposals.' : 'Your service is now visible in listings and your provider profile. Clients can contact you through chat.' }); }} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <AdminVerificationQueueModal visible={showVerificationQueue} onClose={() => setShowVerificationQueue(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <PayoutSettingsModal visible={showPayoutSettings} onClose={() => setShowPayoutSettings(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <AvailabilityModal visible={showAvailability} onClose={() => setShowAvailability(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />

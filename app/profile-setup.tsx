@@ -67,11 +67,13 @@ export default function ProfileSetupScreen() {
   const [error, setError] = useState('');
 
   const isProvider = role !== 'customer';
+  const isBusiness = role === 'business';
+  const profileNameLabel = isBusiness ? 'Business or studio name' : 'Full name';
   const roleOptions = useMemo(() => [
-    { id: 'customer' as const, label: 'I need a skilled expert', icon: '⌕' },
-    { id: 'artisan' as const, label: 'I offer hands-on services', icon: '✦' },
-    { id: 'professional' as const, label: 'I offer professional services', icon: '◎' },
-    { id: 'business' as const, label: 'I hire for a business', icon: '▦' },
+    { id: 'customer' as const, label: 'I want to hire a skilled provider', icon: '⌕' },
+    { id: 'artisan' as const, label: 'I provide skilled trade services', icon: '✦' },
+    { id: 'professional' as const, label: 'I provide professional services', icon: '◎' },
+    { id: 'business' as const, label: 'We provide services as a business', icon: '▦' },
   ], []);
 
   const pickImage = async (callback: (uri: string) => void) => {
@@ -156,8 +158,8 @@ export default function ProfileSetupScreen() {
         </View>
         <Pressable onPress={() => router.replace('/')}><Text style={styles.skip}>Skip for now</Text></Pressable>
       </View>
-      <Text style={styles.title}>Make your profile work for you.</Text>
-      <Text style={styles.subtitle}>Tell the right people who you are and what you can get done.</Text>
+      <Text style={styles.title}>{isProvider ? 'Build your service profile.' : 'Make your profile work for you.'}</Text>
+      <Text style={styles.subtitle}>{isProvider ? 'Show clients what you do, where you work and why they can trust you.' : 'Tell the right people who you are and what you need done.'}</Text>
 
       <Text style={styles.sectionTitle}>How will you use Handyskillz?</Text>
       <View style={styles.roleGrid}>
@@ -174,17 +176,17 @@ export default function ProfileSetupScreen() {
       <View style={styles.form}>
         <Pressable onPress={() => pickImage(setAvatarUri)} style={styles.avatarPicker}>
           {avatarUri ? <Image source={{ uri: avatarUri }} style={styles.avatarImage} /> : <Text style={styles.avatarPlus}>+</Text>}
-          <View><Text style={styles.avatarTitle}>{avatarUri ? 'Change profile photo' : 'Add a profile photo'}</Text><Text style={styles.avatarHint}>A clear photo helps people trust your profile</Text></View>
+          <View><Text style={styles.avatarTitle}>{avatarUri ? (isBusiness ? 'Change business logo' : 'Change profile photo') : (isBusiness ? 'Add a business logo' : 'Add a profile photo')}</Text><Text style={styles.avatarHint}>{isBusiness ? 'A clear logo helps clients recognize your business' : 'A clear photo helps people trust your profile'}</Text></View>
         </Pressable>
-        <TextInput value={displayName} onChangeText={setDisplayName} placeholder="Full name" placeholderTextColor={muted} style={styles.input} />
+        <TextInput value={displayName} onChangeText={setDisplayName} placeholder={profileNameLabel} placeholderTextColor={muted} style={styles.input} />
         <TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Phone number" placeholderTextColor={muted} style={styles.input} />
         <TextInput value={city} onChangeText={setCity} placeholder="City or service area" placeholderTextColor={muted} style={styles.input} />
-        <TextInput value={bio} onChangeText={setBio} multiline placeholder={isProvider ? 'Short professional bio' : 'What do you usually need help with?'} placeholderTextColor={muted} style={[styles.input, styles.textArea]} />
+        <TextInput value={bio} onChangeText={setBio} multiline placeholder={isProvider ? (isBusiness ? 'Describe your business, services and what clients can expect' : 'Describe your expertise, experience and the services you offer') : 'What do you usually need help with?'} placeholderTextColor={muted} style={[styles.input, styles.textArea]} />
         {isProvider ? <>
-          <TextInput value={skillsText} onChangeText={setSkillsText} placeholder="Skills, separated by commas" placeholderTextColor={muted} style={styles.input} />
+          <TextInput value={skillsText} onChangeText={setSkillsText} placeholder={isBusiness ? 'Services or specialties, separated by commas' : 'Skills or specialties, separated by commas'} placeholderTextColor={muted} style={styles.input} />
           <View style={styles.splitRow}>
-            <TextInput value={yearsExperience} onChangeText={setYearsExperience} keyboardType="number-pad" placeholder="Years active" placeholderTextColor={muted} style={[styles.input, styles.splitInput]} />
-            <TextInput value={hourlyRate} onChangeText={setHourlyRate} keyboardType="number-pad" placeholder="Rate ₦ / hour" placeholderTextColor={muted} style={[styles.input, styles.splitInput]} />
+            <TextInput value={yearsExperience} onChangeText={setYearsExperience} keyboardType="number-pad" placeholder={isBusiness ? 'Years in business' : 'Years of experience'} placeholderTextColor={muted} style={[styles.input, styles.splitInput]} />
+            <TextInput value={hourlyRate} onChangeText={setHourlyRate} keyboardType="number-pad" placeholder="Starting rate (₦)" placeholderTextColor={muted} style={[styles.input, styles.splitInput]} />
           </View>
         </> : null}
       </View>

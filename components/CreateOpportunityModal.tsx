@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import colors from '@/constants/colors';
 
@@ -6,13 +6,20 @@ type Palette = typeof colors.dark;
 type Draft = { title: string; description: string; category: string; location: string; budgetMinNgn: string; budgetMaxNgn: string };
 const empty: Draft = { title: '', description: '', category: '', location: '', budgetMinNgn: '', budgetMaxNgn: '' };
 
-export default function CreateOpportunityModal({ visible, onClose, onCreated, getToken, palette }: {
-  visible: boolean; onClose: () => void; onCreated: () => void;
+export default function CreateOpportunityModal({ visible, onClose, onCreated, getToken, palette, role }: {
+  role: string; visible: boolean; onClose: () => void; onCreated: () => void;
   getToken: () => Promise<string | null>; palette: Palette;
 }) {
+  const isService = ['artisan', 'professional', 'business'].includes(role);
+  const wording = role === 'artisan'
+    ? { title: 'Offer your artisan service', example: 'e.g. I provide plumbing repairs and installations', category: 'Trade, e.g. Plumbing or Carpentry', description: 'Describe your craft, the work included, your experience and availability' }
+    : role === 'professional'
+      ? { title: 'Offer your professional service', example: 'e.g. I design brand identities for growing businesses', category: 'Specialty, e.g. Design or Accounting', description: 'Describe your expertise, deliverables, process and turnaround time' }
+      : { title: 'Offer your business service', example: 'e.g. We provide office cleaning and facility maintenance', category: 'Business service, e.g. Cleaning or Logistics', description: 'Describe your company services, team capacity, packages and availability' };
   const [draft, setDraft] = useState<Draft>(empty);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => { setDraft(empty); setError(''); }, [role]);
   const apiBase = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '') || '';
   const field = (key: keyof Draft, label: string, multiline = false, numeric = false) => <TextInput
     value={draft[key]} onChangeText={(value) => setDraft((current) => ({ ...current, [key]: value }))}
@@ -24,7 +31,7 @@ export default function CreateOpportunityModal({ visible, onClose, onCreated, ge
     if (busy) return;
     const min = draft.budgetMinNgn.trim() ? Number(draft.budgetMinNgn.replace(/,/g, '')) : null;
     const max = draft.budgetMaxNgn.trim() ? Number(draft.budgetMaxNgn.replace(/,/g, '')) : null;
-    if ((min !== null && (!Number.isFinite(min) || min < 0)) || (max !== null && (!Number.isFinite(max) || max < 0)) || (min !== null && max !== null && min > max)) { setError('Enter valid budgets, with the maximum at least the minimum.'); return; }
+    if ((min !== null && (!Number.isFinite(min) || min < 0)) || (max !== null && (!Number.isFinite(max) || max < 0)) || (min !== null && max !== null && min > max)) { setError('Enter valid amounts, with the maximum at least the minimum.'); return; }
     if (!draft.title.trim() || !draft.description.trim() || !draft.category.trim()) { setError('Add a title, description and category.'); return; }
     setBusy(true); setError('');
     try {
@@ -50,18 +57,18 @@ export default function CreateOpportunityModal({ visible, onClose, onCreated, ge
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { if (!busy) onClose(); }}>
     <View style={styles.backdrop}><View style={[styles.sheet, { backgroundColor: palette.card }]}>
       <View style={[styles.handle, { backgroundColor: palette.mutedForeground }]} />
-      <Text style={[styles.title, { color: palette.foreground }]}>Post a job</Text>
-      <Text style={[styles.subtitle, { color: palette.mutedForeground }]}>Your job appears in Open jobs and your posted listings. People can enquire through chat.</Text>
+      <Text style={[styles.title, { color: palette.foreground }]}>{isService ? wording.title : 'Post a job'}</Text>
+      <Text style={[styles.subtitle, { color: palette.mutedForeground }]}>{isService ? 'Show clients what you offer, where you work and your pricing. Interested clients can contact you through chat.' : 'Describe the service you need. Providers can enquire and submit proposals.'}</Text>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.fields}>
-        {field('title', 'What needs to be done?')}
-        {field('description', 'Describe the scope and expectations', true)}
-        {field('category', 'Category, e.g. Plumbing')}
-        {field('location', 'Location or remote', false)}
-        <View style={styles.row}>{field('budgetMinNgn', 'Min budget (₦)', false, true)}{field('budgetMaxNgn', 'Max budget (₦)', false, true)}</View>
+        {field('title', isService ? wording.example : 'What needs to be done?')}
+        {field('description', isService ? wording.description : 'Describe the scope and expectations', true)}
+        {field('category', isService ? wording.category : 'Category, e.g. Plumbing')}
+        {field('location', isService ? 'Service area or remote availability' : 'Location or remote', false)}
+        <View style={styles.row}>{field('budgetMinNgn', isService ? 'Starting price (NGN)' : 'Min budget (NGN)', false, true)}{field('budgetMaxNgn', isService ? 'Upper price (optional)' : 'Max budget (NGN)', false, true)}</View>
         {error ? <Text style={[styles.error, { color: palette.destructive }]}>{error}</Text> : null}
         <View style={styles.row}>
           <Pressable disabled={busy} onPress={onClose} style={[styles.button, { borderWidth: 1, borderColor: palette.border }]}><Text style={[styles.buttonText, { color: palette.foreground }]}>Cancel</Text></Pressable>
-          <Pressable onPress={() => void publish()} disabled={busy} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{busy ? 'Publishing…' : 'Publish'}</Text></Pressable>
+          <Pressable onPress={() => void publish()} disabled={busy} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{busy ? 'Publishing…' : isService ? 'Publish service' : 'Publish job'}</Text></Pressable>
         </View>
       </ScrollView>
     </View></View>

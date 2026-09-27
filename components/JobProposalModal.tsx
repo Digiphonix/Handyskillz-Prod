@@ -1,9 +1,10 @@
+import { formatListingPrice } from '@/constants/listings';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import colors from '@/constants/colors';
 
 type Palette = typeof colors.dark;
-type Job = { customer_id: string; id: string; title: string; description: string; category: string; location?: string | null; budget_min_ngn?: number | null; budget_max_ngn?: number | null; status: string; selected_provider_id?: string | null };
+type Job = { listing_type?: 'job_request' | 'service_offer'; customer_id: string; id: string; title: string; description: string; category: string; location?: string | null; budget_min_ngn?: number | null; budget_max_ngn?: number | null; status: string; selected_provider_id?: string | null };
 type Bid = { id: string; provider_id: string; amount_ngn: number; message: string; status: string; profiles?: { display_name?: string; role?: string; city?: string; rating?: number } | null };
 type Payment = { amount_ngn: number; amount_released_ngn: number; status: string; release_status: string; funded_at?: string | null; released_at?: string | null };
 
@@ -22,6 +23,7 @@ export default function JobProposalModal({ visible, job, role, userId, email, on
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const apiBase = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '') || '';
+  const isService = job?.listing_type === 'service_offer';
   const providerMode = ['artisan', 'professional', 'business'].includes(role);
   const inputStyle = [styles.input, { color: palette.foreground, backgroundColor: palette.background, borderColor: palette.border }];
 
@@ -40,6 +42,7 @@ export default function JobProposalModal({ visible, job, role, userId, email, on
 
   const load = async () => {
     if (!job) return;
+    if (job.listing_type === 'service_offer') { setBids([]); setCanManage(false); setPayment(null); setJobStatus(job.status); setError(''); setLoading(false); return; }
     setLoading(true); setError(''); setBids([]); setCanManage(false); setPayment(null);
     try {
       const payload = await request(`/jobs/${encodeURIComponent(job.id)}/bids`);
@@ -119,17 +122,18 @@ export default function JobProposalModal({ visible, job, role, userId, email, on
       <View style={[styles.handle, { backgroundColor: palette.mutedForeground }]} />
       <Text style={[styles.title, { color: palette.foreground }]}>{job?.title || 'Job details'}</Text>
       {job ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-        <Text style={[styles.meta, { color: palette.mutedForeground }]}>{job.category} · {job.location || 'Location not set'}{job.budget_max_ngn ? ` · Budget up to ₦${Number(job.budget_max_ngn).toLocaleString()}` : ''}</Text>
+        <Text style={[styles.meta, { color: palette.mutedForeground }]}>{job.category} · {job.location || 'Location not set'}{' - ' + formatListingPrice(job)}</Text>
+        <Text style={[styles.sectionTitle, { color: palette.tint }]}>{isService ? 'Service offered' : 'Service needed'}</Text>
         <Text style={[styles.description, { color: palette.foreground }]}>{job.description}</Text>
-        {job.customer_id !== userId && (job.status === 'open' || isSelectedProvider) ? <Pressable accessibilityRole="button" onPress={() => { onClose(); onStartConversation(job.customer_id, job.id); }} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>Enquire / Chat with poster</Text></Pressable> : null}
+        {job.customer_id !== userId && (job.status === 'open' || isSelectedProvider) ? <Pressable accessibilityRole="button" onPress={() => { onClose(); onStartConversation(job.customer_id, job.id); }} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{isService ? 'Enquire about this service' : 'Enquire / Chat with poster'}</Text></Pressable> : null}
         {['matched', 'in_progress'].includes(jobStatus) ? <Pressable accessibilityRole="button" onPress={() => onTrackJob(job.id)} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{isSelectedProvider ? 'Share location / Job tracking' : 'Track provider on map'}</Text></Pressable> : null}
-        {providerMode && job.customer_id !== userId && jobStatus === 'open' ? <View style={[styles.proposalForm, { borderColor: palette.border }]}>
+        {!isService && providerMode && job.customer_id !== userId && jobStatus === 'open' ? <View style={[styles.proposalForm, { borderColor: palette.border }]}>
           <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Submit or update your proposal</Text>
           <TextInput value={amount} onChangeText={setAmount} keyboardType="number-pad" placeholder="Your price in NGN" placeholderTextColor={palette.mutedForeground} style={inputStyle} />
           <TextInput value={message} onChangeText={setMessage} multiline maxLength={3000} placeholder="Explain your experience and approach" placeholderTextColor={palette.mutedForeground} style={[inputStyle, styles.multiline]} />
           <Pressable disabled={busy} onPress={() => void submit()} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{busy ? 'Submitting…' : 'Send proposal'}</Text></Pressable>
         </View> : null}
-        {canManage || (providerMode && bids.length > 0) ? <>
+        {!isService && (canManage || (providerMode && bids.length > 0)) ? <>
           <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Proposals ({bids.length})</Text>
           {bids.map((bid) => <View key={bid.id} style={[styles.bid, { backgroundColor: palette.background, borderColor: palette.border }]}>
             <View style={styles.bidTop}><Text style={[styles.bidName, { color: palette.foreground }]}>{bid.profiles?.display_name || 'Provider'}</Text><Text style={[styles.bidAmount, { color: palette.tint }]}>₦{Number(bid.amount_ngn).toLocaleString()}</Text></View>
@@ -139,7 +143,7 @@ export default function JobProposalModal({ visible, job, role, userId, email, on
           </View>)}
           {!bids.length ? <Text style={[styles.meta, { color: palette.mutedForeground }]}>No proposals have been submitted yet.</Text> : null}
         </> : null}
-        {canManage || isSelectedProvider ? <View style={[styles.paymentCard, { borderColor: palette.border }]}>
+        {!isService && (canManage || isSelectedProvider) ? <View style={[styles.paymentCard, { borderColor: palette.border }]}>
           <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Job payment</Text>
           <Text style={[styles.meta, { color: palette.mutedForeground }]}>{payment ? `₦${Number(payment.amount_ngn).toLocaleString()} · ${payment.status.replace('_', ' ')}${payment.release_status === 'processing' || payment.release_status === 'awaiting_otp' ? ' · transfer processing' : ''}` : 'No payment has been started for this job.'}</Text>
           {canManage && jobStatus === 'matched' && !payment ? <Pressable disabled={busy} onPress={() => void fundJob()} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{busy ? 'Opening checkout…' : 'Fund job securely with Paystack'}</Text></Pressable> : null}

@@ -61,6 +61,7 @@ router.post("/jobs", requireAuth, async (req, res) => {
     }
     const { data, error } = await supabase.from("jobs").insert({
       customer_id: userId,
+      listing_type: profile.role === "customer" ? "job_request" : "service_offer",
       title,
       description,
       category,
@@ -100,12 +101,13 @@ router.get("/jobs/:jobId/bids", requireAuth, async (req, res) => {
   try {
     const userId = (req as AuthenticatedRequest).userId;
     const supabase = requireSupabase();
-    const { data: job, error: jobError } = await supabase.from("jobs").select("id,customer_id,status").eq("id", req.params.jobId).maybeSingle();
+    const { data: job, error: jobError } = await supabase.from("jobs").select("id,customer_id,status,listing_type").eq("id", req.params.jobId).maybeSingle();
     if (jobError) throw jobError;
     if (!job) { res.status(404).json({ error: "Job not found" }); return; }
     const { data: profile, error: profileError } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
     if (profileError) throw profileError;
     if (!profile) { res.status(404).json({ error: "Complete your profile before viewing proposals" }); return; }
+    if (job.listing_type === "service_offer") { res.json({ bids: [], canManage: false, jobStatus: job.status }); return; }
     let query = supabase.from("job_bids").select("id,job_id,provider_id,amount_ngn,message,status,created_at,profiles(id,display_name,role,city,avatar_url)").eq("job_id", req.params.jobId).order("created_at", { ascending: false });
     if (job.customer_id !== userId) {
       if (["customer", "admin"].includes(profile.role)) { res.json({ bids: [], canManage: false, jobStatus: job.status }); return; }
@@ -136,6 +138,7 @@ router.post("/jobs/:jobId/bids", requireAuth, async (req, res) => {
     if (!profile || !["artisan", "professional", "business"].includes(profile.role)) { res.status(403).json({ error: "Complete a provider profile before submitting a proposal" }); return; }
     if (!profile.onboarding_complete) { res.status(403).json({ error: "Complete your profile before submitting a proposal" }); return; }
     if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+    if (job.listing_type === "service_offer") { res.status(409).json({ error: "This is a service offering. Contact the provider to enquire instead of submitting a proposal." }); return; }
     if (job.customer_id === userId) { res.status(400).json({ error: "You cannot submit a proposal to your own job" }); return; }
     if (job.status !== "open") { res.status(409).json({ error: "This job is no longer accepting proposals" }); return; }
     const { data, error } = await supabase.from("job_bids").upsert({
@@ -155,6 +158,7 @@ router.post("/jobs/:jobId/bids/:bidId/accept", requireAuth, async (req, res) => 
     if (jobError) throw jobError;
     if (!job) { res.status(404).json({ error: "Job not found" }); return; }
     if (job.customer_id !== userId) { res.status(403).json({ error: "Only the job owner can choose a proposal" }); return; }
+    if (job.listing_type === "service_offer") { res.status(409).json({ error: "Service offerings do not accept job proposals" }); return; }
     const { data: providerId, error } = await supabase.rpc("accept_job_bid", { p_job_id: req.params.jobId, p_bid_id: req.params.bidId });
     if (error) {
       if (error.message?.includes("not open")) { res.status(409).json({ error: "This job already has a selected provider or is closed" }); return; }

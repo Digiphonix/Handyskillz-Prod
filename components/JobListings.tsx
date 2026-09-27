@@ -1,3 +1,4 @@
+import { formatListingPrice } from '@/constants/listings';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import colors from '@/constants/colors';
@@ -35,7 +36,8 @@ export function JobListings({ getToken, palette, onOpenJob, postedBy, search = '
       <Text style={[styles.title, { color: palette.foreground }]}>{job.title}</Text>
       <Text style={[styles.copy, { color: palette.mutedForeground }]}>{job.category} · {job.location || 'Location not specified'}</Text>
       <Text style={[styles.copy, { color: palette.mutedForeground }]} numberOfLines={2}>{job.description}</Text>
-      <Text style={[styles.action, { color: palette.tint }]}>View job and enquire</Text>
+      <Text style={[styles.copy, { color: palette.foreground }]}>{formatListingPrice(job)}</Text>
+      <Text style={[styles.action, { color: palette.tint }]}>{job.listing_type === 'service_offer' ? 'View service and enquire' : 'View job and enquire'}</Text>
     </Pressable>)}
     {!loading && !jobs.length && !error ? <Text style={[styles.copy, { color: palette.mutedForeground }]}>No open jobs found.</Text> : null}
     {error ? <><Text style={[styles.copy, { color: palette.destructive }]}>{error}</Text><Pressable onPress={() => setRetry((value) => value + 1)}><Text style={[styles.action, { color: palette.tint }]}>Retry</Text></Pressable></> : null}
@@ -46,7 +48,7 @@ export function ProviderJobsModal({ provider, onClose, onMessage, ...props }: Om
   return <Modal visible transparent animationType="slide" onRequestClose={onClose}>
     <View style={styles.backdrop}><View style={[styles.sheet, { backgroundColor: props.palette.background }]}>
       <Text style={[styles.title, { color: props.palette.foreground }]}>{provider.name}</Text>
-      <Text style={[styles.copy, { color: props.palette.mutedForeground }]}>Open jobs posted by this provider</Text>
+      <Text style={[styles.copy, { color: props.palette.mutedForeground }]}>Services and open listings from this provider</Text>
       <ScrollView contentContainerStyle={styles.list}><JobListings {...props} postedBy={provider.id} limit={100} /></ScrollView>
       <Pressable onPress={onMessage} style={[styles.button, { backgroundColor: props.palette.primary }]}><Text style={[styles.action, { color: props.palette.primaryForeground }]}>Enquire / Message provider</Text></Pressable>
       <Pressable onPress={onClose} style={styles.button}><Text style={[styles.action, { color: props.palette.foreground }]}>Close</Text></Pressable>
