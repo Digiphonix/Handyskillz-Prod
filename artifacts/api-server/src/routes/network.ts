@@ -21,6 +21,20 @@ router.get("/network/providers", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/network/providers/:profileId", requireAuth, async (req, res) => {
+  try {
+    const supabase = requireSupabase();
+    const { data, error } = await supabase.from("profiles")
+      .select("id,role,display_name,city,bio,skills,avatar_url,completed_jobs,hourly_rate_ngn,years_experience,portfolio_items(id,title,description,image_url,project_url,sort_order)")
+      .eq("id", String(req.params.profileId)).eq("onboarding_complete", true).maybeSingle();
+    if (error) throw error;
+    if (!data || !providerRoles.has(data.role)) { res.status(404).json({ error: "Provider profile not found" }); return; }
+    res.json({ profile: data });
+  } catch (error) {
+    res.status(503).json({ error: error instanceof Error ? error.message : "Provider profile unavailable" });
+  }
+});
+
 router.get("/network/saved", requireAuth, async (req, res) => {
   try {
     const userId = (req as AuthenticatedRequest).userId;

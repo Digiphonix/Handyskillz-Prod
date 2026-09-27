@@ -1,12 +1,13 @@
 import { formatListingPrice } from '@/constants/listings';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import colors from '@/constants/colors';
 
 type Palette = typeof colors.dark;
 type Job = { listing_type?: 'job_request' | 'service_offer'; customer_id: string; id: string; title: string; description: string; category: string; location?: string | null; budget_min_ngn?: number | null; budget_max_ngn?: number | null; status: string; selected_provider_id?: string | null };
 type Bid = { id: string; provider_id: string; amount_ngn: number; message: string; status: string; profiles?: { display_name?: string; role?: string; city?: string; rating?: number } | null };
 type Payment = { amount_ngn: number; amount_released_ngn: number; status: string; release_status: string; funded_at?: string | null; released_at?: string | null };
+type ProviderProfile = { id: string; role: string; display_name: string; city?: string | null; bio?: string | null; skills?: string[] | null; avatar_url?: string | null; completed_jobs?: number | null; hourly_rate_ngn?: number | null; years_experience?: number | null; portfolio_items?: { id: string; title: string; description?: string | null; image_url?: string | null }[] };
 
 export default function JobProposalModal({ visible, job, role, userId, email, onClose, onStartConversation, onTrackJob, getToken, palette }: {
   visible: boolean; job: Job | null; role: string; onClose: () => void; onStartConversation: (providerId: string, jobId: string) => void;
@@ -22,6 +23,8 @@ export default function JobProposalModal({ visible, job, role, userId, email, on
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [providerProfile, setProviderProfile] = useState<ProviderProfile | null>(null);
+  const [showProviderProfile, setShowProviderProfile] = useState(false);
   const apiBase = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '') || '';
   const isService = job?.listing_type === 'service_offer';
   const providerMode = ['artisan', 'professional', 'business'].includes(role);
@@ -35,14 +38,33 @@ export default function JobProposalModal({ visible, job, role, userId, email, on
     headers.set('Authorization', `Bearer ${token}`);
     if (init?.body) headers.set('Content-Type', 'application/json');
     const response = await fetch(`${apiBase}/api${path}`, { ...init, headers });
-    const payload = await response.json();
+    const responseText = await response.text();
+    let payload: any;
+    try { payload = responseText ? JSON.parse(responseText) : {}; }
+    catch { throw new Error(`The API returned an unexpected response (HTTP ${response.status}).`); }
     if (!response.ok) throw new Error(payload.error || 'Job proposal request failed.');
     return payload;
   };
 
   const load = async () => {
     if (!job) return;
-    if (job.listing_type === 'service_offer') { setBids([]); setCanManage(false); setPayment(null); setJobStatus(job.status); setError(''); setLoading(false); return; }
+    if (job.listing_type === 'service_offer') {
+      setBids([]); setCanManage(false); setPayment(null); setJobStatus(job.status); setError(''); setLoading(true); setProviderProfile(null); setShowProviderProfile(false);
+      try {
+        try {
+          const payload = await request(`/network/providers/${encodeURIComponent(job.customer_id)}`);
+          setProviderProfile(payload.profile || null);
+        } catch {
+          // Older deployed API versions only expose provider directory results.
+          const payload = await request('/network/providers');
+          const profile = (Array.isArray(payload.providers) ? payload.providers : []).find((item: ProviderProfile) => item.id === job.customer_id);
+          if (!profile) throw new Error('The service provider profile could not be found.');
+          setProviderProfile(profile);
+        }
+      } catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Could not load the provider profile.'); }
+      finally { setLoading(false); }
+      return;
+    }
     setLoading(true); setError(''); setBids([]); setCanManage(false); setPayment(null);
     try {
       const payload = await request(`/jobs/${encodeURIComponent(job.id)}/bids`);
@@ -125,6 +147,22 @@ export default function JobProposalModal({ visible, job, role, userId, email, on
         <Text style={[styles.meta, { color: palette.mutedForeground }]}>{job.category} · {job.location || 'Location not set'}{' - ' + formatListingPrice(job)}</Text>
         <Text style={[styles.sectionTitle, { color: palette.tint }]}>{isService ? 'Service offered' : 'Service needed'}</Text>
         <Text style={[styles.description, { color: palette.foreground }]}>{job.description}</Text>
+        {isService ? <View style={[styles.providerCard, { backgroundColor: palette.background, borderColor: palette.border }]}>
+          <View style={styles.providerSummary}>
+            {providerProfile?.avatar_url ? <Image source={{ uri: providerProfile.avatar_url }} style={styles.providerAvatar} /> : <View style={[styles.providerAvatar, styles.avatarFallback, { backgroundColor: palette.secondary }]}><Text style={[styles.avatarInitial, { color: palette.tint }]}>{providerProfile?.display_name?.charAt(0) || '?'}</Text></View>}
+            <View style={{ flex: 1, gap: 3 }}><Text style={[styles.bidName, { color: palette.foreground }]}>{providerProfile?.display_name || (loading ? 'Loading provider…' : 'Service provider')}</Text><Text style={[styles.meta, { color: palette.mutedForeground }]}>{providerProfile ? `${providerProfile.role} · ${providerProfile.city || 'Location not set'}` : 'Provider profile'}</Text></View>
+          </View>
+          <Pressable accessibilityRole="button" disabled={!providerProfile} onPress={() => setShowProviderProfile((value) => !value)} style={[styles.button, { borderWidth: 1, borderColor: palette.border }]}><Text style={[styles.buttonText, { color: palette.foreground }]}>{showProviderProfile ? 'Hide provider profile' : 'View provider profile'}</Text></Pressable>
+          {showProviderProfile && providerProfile ? <View style={styles.profileDetails}>
+            <Text style={[styles.description, { color: palette.foreground }]}>{providerProfile.bio || 'This provider has not added an introduction yet.'}</Text>
+            {providerProfile.skills?.length ? <Text style={[styles.meta, { color: palette.mutedForeground }]}>Specialties: {providerProfile.skills.join(', ')}</Text> : null}
+            <Text style={[styles.meta, { color: palette.mutedForeground }]}>{providerProfile.years_experience ? `${providerProfile.years_experience} years experience` : 'Experience not listed'} · {Number(providerProfile.completed_jobs) || 0} completed jobs</Text>
+            {providerProfile.portfolio_items?.map((item) => <View key={item.id} style={[styles.portfolioItem, { borderTopColor: palette.border }]}>
+              {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.portfolioImage} /> : null}
+              <View style={{ flex: 1, gap: 3 }}><Text style={[styles.bidName, { color: palette.foreground }]}>{item.title}</Text>{item.description ? <Text style={[styles.meta, { color: palette.mutedForeground }]}>{item.description}</Text> : null}</View>
+            </View>)}
+          </View> : null}
+        </View> : null}
         {job.customer_id !== userId && (job.status === 'open' || isSelectedProvider) ? <Pressable accessibilityRole="button" onPress={() => { onClose(); onStartConversation(job.customer_id, job.id); }} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{isService ? 'Enquire about this service' : 'Enquire / Chat with poster'}</Text></Pressable> : null}
         {['matched', 'in_progress'].includes(jobStatus) ? <Pressable accessibilityRole="button" onPress={() => onTrackJob(job.id)} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{isSelectedProvider ? 'Share location / Job tracking' : 'Track provider on map'}</Text></Pressable> : null}
         {!isService && providerMode && job.customer_id !== userId && jobStatus === 'open' ? <View style={[styles.proposalForm, { borderColor: palette.border }]}>
@@ -170,5 +208,6 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontFamily: 'Inter_700Bold' }, proposalForm: { gap: 10, borderWidth: 1, borderRadius: 16, padding: 12 },
   input: { minHeight: 44, borderWidth: 1, borderRadius: 11, paddingHorizontal: 12, fontSize: 13, fontFamily: 'Inter_400Regular' }, multiline: { minHeight: 88, textAlignVertical: 'top', paddingTop: 12 },
   bid: { borderWidth: 1, borderRadius: 15, padding: 12, gap: 8 }, paymentCard: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10 }, bidTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 }, bidName: { fontSize: 14, fontFamily: 'Inter_600SemiBold' }, bidAmount: { fontSize: 14, fontFamily: 'Inter_700Bold' },
+  providerCard: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10 }, providerSummary: { flexDirection: 'row', alignItems: 'center', gap: 10 }, providerAvatar: { width: 44, height: 44, borderRadius: 22 }, avatarFallback: { alignItems: 'center', justifyContent: 'center' }, avatarInitial: { fontSize: 18, fontFamily: 'Inter_700Bold' }, profileDetails: { gap: 10 }, portfolioItem: { flexDirection: 'row', gap: 10, borderTopWidth: 1, paddingTop: 10 }, portfolioImage: { width: 54, height: 54, borderRadius: 9 },
   button: { minHeight: 44, borderRadius: 24, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }, buttonText: { fontSize: 12, fontFamily: 'Inter_700Bold' }, error: { fontSize: 12, lineHeight: 17, fontFamily: 'Inter_500Medium' },
 });
