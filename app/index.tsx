@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, useUser } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import colors from '@/constants/colors';
+import JobTrackingModal from '@/components/tracking/JobTrackingModal';
 import AddressBookModal from '@/components/AddressBookModal';
 import ProfileEditorModal from '@/components/ProfileEditorModal';
 import CreateOpportunityModal from '@/components/CreateOpportunityModal';
@@ -183,8 +184,8 @@ function SectionHeader({ title, action, onAction }: { title: string; action?: st
   );
 }
 
-function AppHeader({ role, onRolePicker, onNotifications }: { role: Role; onRolePicker: () => void; onNotifications: () => void }) {
-  const { accentText, onPrimary, styles } = useAppTheme();
+function AppHeader({ role, onRolePicker, onNotifications, onTracking }: { role: Role; onRolePicker: () => void; onNotifications: () => void; onTracking: () => void }) {
+  const { accentText, onPrimary, text, styles } = useAppTheme();
   return (
     <View style={styles.header}>
       <View>
@@ -195,6 +196,7 @@ function AppHeader({ role, onRolePicker, onNotifications }: { role: Role; onRole
         <Text style={styles.brandMark}>handy<Text style={styles.brandAccent}>skillz</Text></Text>
       </View>
       <View style={styles.headerActions}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Track assigned providers" onPress={onTracking} style={styles.iconButton}><Feather name="map" size={18} color={text} /></Pressable>
         <IconButton icon="bell" onPress={onNotifications} />
         <Pressable onPress={onRolePicker} style={({ pressed }) => [styles.roleBadge, pressed && styles.pressed]}>
           <Feather name={roleConfig[role].icon} size={16} color={onPrimary} />
@@ -738,6 +740,8 @@ export default function Index() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [showRoles, setShowRoles] = useState(false);
+  const [showTracking, setShowTracking] = useState(false);
+  const [trackingJobId, setTrackingJobId] = useState<string | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
   const [actionModal, setActionModal] = useState<{ title: string; message: string } | null>(null);
   const [showAddresses, setShowAddresses] = useState(false);
@@ -906,7 +910,7 @@ export default function Index() {
   return (
     <AppThemeContext.Provider value={theme}>
     <View style={[styles.app, { paddingTop: topPadding }]}>
-      <AppHeader role={role} onRolePicker={() => setShowRoles(true)} onNotifications={() => setShowNotifications(true)} />
+      <AppHeader role={role} onRolePicker={() => setShowRoles(true)} onNotifications={() => setShowNotifications(true)} onTracking={() => { setTrackingJobId(null); setShowTracking(true); }} />
       <View style={styles.appInner}>{content}</View>
       {showRoles ? <RolePicker role={role} canAccessAdmin={canAccessAdmin} onSelect={switchRole} onClose={() => setShowRoles(false)} /> : null}
       <View style={{ paddingBottom: bottomPadding }}><BottomNav role={role} tab={activeTab} onChange={setScreen} /></View>
@@ -919,11 +923,12 @@ export default function Index() {
       <AvailabilityModal visible={showAvailability} onClose={() => setShowAvailability(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <SupportModal visible={showSupport} onClose={() => setShowSupport(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} isAdmin={role === 'admin'} />
       <NotificationsModal visible={showNotifications} onClose={() => setShowNotifications(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} onOpenConversation={(id) => { setChatConversationId(id); setScreen('chat'); }} onOpenJob={(id) => void openJobFromNotification(id)} onOpenSupport={() => setShowSupport(true)} />
-      <JobProposalModal visible={Boolean(selectedJob)} job={selectedJob} role={role} userId={user?.id} email={user?.primaryEmailAddress?.emailAddress || ''} onClose={() => setSelectedJob(null)} onStartConversation={startConversation} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
+      <JobProposalModal onTrackJob={(id) => { setSelectedJob(null); setTrackingJobId(id); setShowTracking(true); }} visible={Boolean(selectedJob)} job={selectedJob} role={role} userId={user?.id} email={user?.primaryEmailAddress?.emailAddress || ''} onClose={() => setSelectedJob(null)} onStartConversation={startConversation} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <AdminPaymentTransfersModal visible={showAdminPaymentTransfers} onClose={() => setShowAdminPaymentTransfers(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <GuildsModal visible={showGuilds} onClose={() => setShowGuilds(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} isAdmin={role === 'admin'} />
       <SecuritySessionsModal visible={showSecuritySessions} onClose={() => setShowSecuritySessions(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <PaymentHistoryModal visible={showPaymentHistory} onClose={() => setShowPaymentHistory(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} onOpenJob={openJobFromNotification} />
+      {showTracking ? <JobTrackingModal key={user?.id} initialJobId={trackingJobId} onClose={() => setShowTracking(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} /> : null}
       <BusinessTeamModal visible={showBusinessTeam} onClose={() => setShowBusinessTeam(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
     </View>
     </AppThemeContext.Provider>

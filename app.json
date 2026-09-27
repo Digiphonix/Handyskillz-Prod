@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.handyskillz.app"
+      "bundleIdentifier": "com.handyskillz.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.handyskillz.app",
@@ -29,6 +32,12 @@
           "color": "#D0F34E",
           "defaultChannel": "default"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Handyskillz to share your location with your assigned customer while you keep job tracking open."
+        }
       ]
     ],
     "experiments": {
@@ -36,6 +45,13 @@
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9a5f9b49-9d65-4ba2-9799-69094d987a21"
+      }
+    },
+    "owner": "skillhubng"
   }
 }

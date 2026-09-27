@@ -7,9 +7,9 @@ type Job = { id: string; title: string; description: string; category: string; l
 type Bid = { id: string; provider_id: string; amount_ngn: number; message: string; status: string; profiles?: { display_name?: string; role?: string; city?: string; rating?: number } | null };
 type Payment = { amount_ngn: number; amount_released_ngn: number; status: string; release_status: string; funded_at?: string | null; released_at?: string | null };
 
-export default function JobProposalModal({ visible, job, role, userId, email, onClose, onStartConversation, getToken, palette }: {
+export default function JobProposalModal({ visible, job, role, userId, email, onClose, onStartConversation, onTrackJob, getToken, palette }: {
   visible: boolean; job: Job | null; role: string; onClose: () => void; onStartConversation: (providerId: string, jobId: string) => void;
-  userId: string | null | undefined; email: string;
+  userId: string | null | undefined; email: string; onTrackJob: (jobId: string) => void;
   getToken: () => Promise<string | null>; palette: Palette;
 }) {
   const [bids, setBids] = useState<Bid[]>([]);
@@ -121,6 +121,7 @@ export default function JobProposalModal({ visible, job, role, userId, email, on
       {job ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={[styles.meta, { color: palette.mutedForeground }]}>{job.category} · {job.location || 'Location not set'}{job.budget_max_ngn ? ` · Budget up to ₦${Number(job.budget_max_ngn).toLocaleString()}` : ''}</Text>
         <Text style={[styles.description, { color: palette.foreground }]}>{job.description}</Text>
+        {['matched', 'in_progress'].includes(jobStatus) ? <Pressable accessibilityRole="button" onPress={() => onTrackJob(job.id)} style={[styles.button, { backgroundColor: palette.primary }]}><Text style={[styles.buttonText, { color: palette.primaryForeground }]}>{isSelectedProvider ? 'Share location / Job tracking' : 'Track provider on map'}</Text></Pressable> : null}
         {providerMode && jobStatus === 'open' ? <View style={[styles.proposalForm, { borderColor: palette.border }]}>
           <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Submit or update your proposal</Text>
           <TextInput value={amount} onChangeText={setAmount} keyboardType="number-pad" placeholder="Your price in NGN" placeholderTextColor={palette.mutedForeground} style={inputStyle} />
