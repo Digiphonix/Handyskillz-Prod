@@ -15,6 +15,23 @@ router.get("/notifications", requireAuth, async (req, res) => {
   } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Notifications unavailable" }); }
 });
 
+router.get("/notifications/unread-counts", requireAuth, async (req, res) => {
+  try {
+    const userId = (req as AuthenticatedRequest).userId;
+    const { data, count, error } = await requireSupabase().from("user_notifications")
+      .select("id,data", { count: "exact" }).eq("user_id", userId).is("read_at", null);
+    if (error) throw error;
+    const conversations: Record<string, number> = {};
+    for (const item of data ?? []) {
+      const conversationId = item.data && typeof item.data === "object" && !Array.isArray(item.data)
+        ? (item.data as Record<string, unknown>).conversationId
+        : null;
+      if (typeof conversationId === "string") conversations[conversationId] = (conversations[conversationId] ?? 0) + 1;
+    }
+    res.json({ total: count ?? data?.length ?? 0, conversations });
+  } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Notification counts unavailable" }); }
+});
+
 router.post("/notifications/push-token", requireAuth, async (req, res) => {
   try {
     const userId = (req as AuthenticatedRequest).userId;
@@ -70,6 +87,17 @@ router.post("/notifications/read-all", requireAuth, async (req, res) => {
     if (error) throw error;
     res.json({ success: true });
   } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Could not mark notifications read" }); }
+});
+
+router.patch("/notifications/conversations/:conversationId/read", requireAuth, async (req, res) => {
+  try {
+    const userId = (req as AuthenticatedRequest).userId;
+    const { error } = await requireSupabase().from("user_notifications")
+      .update({ read_at: new Date().toISOString() }).eq("user_id", userId)
+      .contains("data", { conversationId: String(req.params.conversationId) }).is("read_at", null);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) { res.status(503).json({ error: error instanceof Error ? error.message : "Could not mark chat notifications read" }); }
 });
 
 export default router;

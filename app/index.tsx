@@ -1,6 +1,7 @@
 import { formatListingPrice } from '@/constants/listings';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
+  AppState,
   KeyboardAvoidingView,
   useWindowDimensions,
   Image,
@@ -200,7 +201,7 @@ function SectionHeader({ title, action, onAction }: { title: string; action?: st
   );
 }
 
-function AppHeader({ role, onRolePicker, onNotifications, onTracking }: { role: Role; onRolePicker: () => void; onNotifications: () => void; onTracking: () => void }) {
+function AppHeader({ role, unreadNotificationCount, onRolePicker, onNotifications, onTracking }: { role: Role; unreadNotificationCount: number; onRolePicker: () => void; onNotifications: () => void; onTracking: () => void }) {
   const { accentText, onPrimary, text, styles } = useAppTheme();
   return (
     <View style={styles.header}>
@@ -213,7 +214,10 @@ function AppHeader({ role, onRolePicker, onNotifications, onTracking }: { role: 
       </View>
       <View style={styles.headerActions}>
         <Pressable accessibilityRole="button" accessibilityLabel="Track assigned providers" onPress={onTracking} style={styles.iconButton}><Feather name="map" size={18} color={text} /></Pressable>
-        <IconButton icon="bell" onPress={onNotifications} />
+        <View style={{ position: 'relative' }}>
+          <IconButton icon="bell" onPress={onNotifications} />
+          {unreadNotificationCount > 0 ? <View style={styles.countBadge}><Text style={styles.countBadgeText}>{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</Text></View> : null}
+        </View>
         <Pressable onPress={onRolePicker} style={({ pressed }) => [styles.roleBadge, pressed && styles.pressed]}>
           <Feather name={roleConfig[role].icon} size={16} color={onPrimary} />
         </Pressable>
@@ -272,7 +276,7 @@ function RolePicker({ role, canAccessAdmin, onSelect, onClose }: { role: Role; c
   );
 }
 
-function BottomNav({ role, tab, onChange }: { role: Role; tab: Tab; onChange: (tab: Tab) => void }) {
+function BottomNav({ role, tab, unreadChatCount, onChange }: { role: Role; tab: Tab; unreadChatCount: number; onChange: (tab: Tab) => void }) {
   const { accentText, muted, styles } = useAppTheme();
   return (
     <View style={styles.bottomNav}>
@@ -289,7 +293,10 @@ function BottomNav({ role, tab, onChange }: { role: Role; tab: Tab; onChange: (t
             }}
             style={({ pressed }) => [styles.navItem, pressed && styles.pressed]}
           >
-            <Feather name={item.icon} size={17} color={active ? accentText : muted} />
+            <View style={{ position: 'relative' }}>
+              <Feather name={item.icon} size={17} color={active ? accentText : muted} />
+              {item.id === 'chat' && unreadChatCount > 0 ? <View style={styles.countBadge}><Text style={styles.countBadgeText}>{unreadChatCount > 99 ? '99+' : unreadChatCount}</Text></View> : null}
+            </View>
             <Text numberOfLines={1} style={[styles.navLabel, active && styles.navLabelActive]}>{item.label}</Text>
           </Pressable>
         );
@@ -646,7 +653,7 @@ function ProfileScreen({ role, displayName, avatarUrl, onRolePicker, themeMode, 
   );
 }
 
-function ChatWorkspace({ onBack, conversationId, onSelectConversation, onBrowseProviders }: { onBack: () => void; conversationId: string | null; onSelectConversation: (id: string) => void; onBrowseProviders: () => void }) {
+function ChatWorkspace({ onBack, conversationId, onSelectConversation, onBrowseProviders, unreadByConversation, onCountsChanged }: { onBack: () => void; conversationId: string | null; onSelectConversation: (id: string) => void; onBrowseProviders: () => void; unreadByConversation: Record<string, number>; onCountsChanged: () => void }) {
   const { lime, ink, muted, styles } = useAppTheme();
   const { getToken, userId } = useAuth();
   const [draft, setDraft] = useState('');
@@ -679,6 +686,8 @@ function ChatWorkspace({ onBack, conversationId, onSelectConversation, onBrowseP
     try {
       const payload = await apiRequest(`/conversations/${encodeURIComponent(id)}/messages`);
       setMessages(Array.isArray(payload.messages) ? payload.messages : []);
+      try { await apiRequest(`/notifications/conversations/${encodeURIComponent(id)}/read`, { method: 'PATCH' }); } catch { /* Reading chat should work even if notification status is unavailable. */ }
+      onCountsChanged();
     } catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Could not load messages.'); }
     finally { setBusy(false); }
   };
@@ -707,6 +716,7 @@ function ChatWorkspace({ onBack, conversationId, onSelectConversation, onBrowseP
           {conversations.map((conversation) => <Pressable key={conversation.id} onPress={() => onSelectConversation(conversation.id)} style={({ pressed }) => [styles.communityRow, pressed && styles.pressed]}>
             <View style={[styles.communityAvatar, { backgroundColor: lime }]}><Text style={styles.matchInitial}>{String(conversation.participant?.display_name || '?').charAt(0)}</Text></View>
             <View style={styles.communityRowCopy}><Text style={styles.communityRowTitle}>{conversation.participant?.display_name || 'Handyskillz member'}</Text><Text style={styles.communityRowMeta}>{conversation.latest_message?.body || 'Start a protected conversation'}</Text></View>
+            {unreadByConversation[conversation.id] ? <View style={styles.countBadge}><Text style={styles.countBadgeText}>{unreadByConversation[conversation.id] > 99 ? '99+' : unreadByConversation[conversation.id]}</Text></View> : null}
           </Pressable>)}
           {conversations.length === 0 ? <View><Text style={styles.communityRowMeta}>Your protected conversations will appear here.</Text><Pressable onPress={onBrowseProviders} style={[styles.primaryButton, { marginTop: 14 }]}><Text style={styles.primaryButtonText}>Find a provider</Text></Pressable></View> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -783,12 +793,39 @@ export default function Index() {
   const [showBusinessTeam, setShowBusinessTeam] = useState(false);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [unreadByConversation, setUnreadByConversation] = useState<Record<string, number>>({});
+
+  const refreshNotificationCounts = useCallback(async () => {
+    if (!isLoaded || !isSignedIn || !user?.id) return;
+    try {
+      const apiBase = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '') || '';
+      const token = await getToken();
+      if (!apiBase || !token) return;
+      const response = await fetch(`${apiBase}/api/notifications/unread-counts`, { headers: { Authorization: `Bearer ${token}` } });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Could not load notification counts.');
+      const count = Math.max(0, Number(payload.total) || 0);
+      setUnreadNotificationCount(count);
+      setUnreadByConversation(payload.conversations && typeof payload.conversations === 'object' ? payload.conversations : {});
+      if (Platform.OS !== 'web') await Notifications.setBadgeCountAsync(count).catch(() => false);
+    } catch { /* Notification counts can refresh on the next foreground sync. */ }
+  }, [getToken, isLoaded, isSignedIn, user?.id]);
 
   useEffect(() => {
     AsyncStorage.getItem('handyskillz-theme').then((stored) => {
       if (stored === 'light' || stored === 'dark') setThemeMode(stored);
     }).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void refreshNotificationCounts();
+    const timer = setInterval(() => void refreshNotificationCounts(), 30000);
+    const appState = AppState.addEventListener('change', (state) => { if (state === 'active') void refreshNotificationCounts(); });
+    const received = Notifications.addNotificationReceivedListener(() => { void refreshNotificationCounts(); });
+    return () => { clearInterval(timer); appState.remove(); received.remove(); };
+  }, [isLoaded, isSignedIn, user?.id, refreshNotificationCounts]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -836,7 +873,7 @@ export default function Index() {
           });
         }
         let permission = await Notifications.getPermissionsAsync();
-        if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
+        if (!permission.granted) permission = await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: true, allowSound: true } });
         if (!permission.granted || !active) return;
 
         const pushToken = (await Notifications.getExpoPushTokenAsync({ projectId: easProjectId })).data;
@@ -898,6 +935,17 @@ export default function Index() {
   const handleNotificationResponse = (response: Notifications.NotificationResponse) => {
     const data = response.notification.request.content.data || {};
     setShowNotifications(false);
+    if (typeof data.notificationId === 'string') {
+      void (async () => {
+        try {
+          const apiBase = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '') || '';
+          const token = await getToken();
+          if (apiBase && token) await fetch(`${apiBase}/api/notifications/${encodeURIComponent(data.notificationId as string)}/read`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
+        } catch { /* The destination can still open if marking the alert read fails. */ }
+        await refreshNotificationCounts();
+      })();
+    }
+    void refreshNotificationCounts();
     if (typeof data.conversationId === 'string') { setChatConversationId(data.conversationId); setScreen('chat'); }
     else if (typeof data.jobId === 'string') void openJobFromNotification(data.jobId);
     else if (typeof data.ticketId === 'string') setShowSupport(true);
@@ -912,7 +960,7 @@ export default function Index() {
       }
     }).catch(() => undefined);
     return () => subscription.remove();
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, refreshNotificationCounts]);
 
   const startConversation = async (providerId: string, jobId?: string) => {
     const apiBase = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '') || '';
@@ -954,12 +1002,12 @@ export default function Index() {
     } catch (error) { setActionModal({ title: 'Account role', message: error instanceof Error ? error.message : 'Could not change your account role.' }); }
   };
   const content = useMemo(() => {
-    if (screen === 'chat') return <ChatWorkspace conversationId={chatConversationId} onSelectConversation={setChatConversationId} onBack={() => { if (chatConversationId) setChatConversationId(null); else setScreen('dashboard'); }} onBrowseProviders={() => setScreen('network')} />;
+    if (screen === 'chat') return <ChatWorkspace conversationId={chatConversationId} onSelectConversation={setChatConversationId} onBack={() => { if (chatConversationId) setChatConversationId(null); else setScreen('dashboard'); }} onBrowseProviders={() => setScreen('network')} unreadByConversation={unreadByConversation} onCountsChanged={refreshNotificationCounts} />;
     if (screen === 'work') return <WorkScreen role={role} onOpenJob={setSelectedJob} onCreateOpportunity={() => setShowCreateOpportunity(true)} refreshKey={jobsVersion} />;
     if (screen === 'network') return <NetworkScreen onViewProvider={setViewProvider} role={role} onAction={(title, message) => setActionModal({ title, message })} onStartConversation={startConversation} />;
     if (screen === 'profile') return <ProfileScreen role={role} displayName={accountProfile?.display_name?.trim() || user?.fullName || ''} avatarUrl={accountProfile?.avatar_url || user?.imageUrl} onRolePicker={() => setShowRoles(true)} themeMode={themeMode} onToggleTheme={toggleTheme} onSignOut={handleSignOut} onOpenAddresses={() => setShowAddresses(true)} onEditProfile={() => setShowProfileEditor(true)} onOpenNetwork={() => setScreen('network')} onOpenGuilds={() => setShowGuilds(true)} onOpenSecurity={() => setShowSecuritySessions(true)} onOpenPaymentHistory={() => setShowPaymentHistory(true)} onOpenTeam={() => setShowBusinessTeam(true)} onOpenPayout={() => setShowPayoutSettings(true)} onOpenAvailability={() => setShowAvailability(true)} onOpenSupport={() => setShowSupport(true)} onOpenNotifications={() => setShowNotifications(true)} onOpenPaymentTransfers={() => setShowAdminPaymentTransfers(true)} />;
     return role === 'customer' ? <CustomerDashboard onOpenJob={setSelectedJob} onCreateOpportunity={() => setShowCreateOpportunity(true)} onViewProvider={setViewProvider} refreshKey={jobsVersion} onAction={(title, message) => setActionModal({ title, message })} /> : <ProviderDashboard city={accountProfile?.city} refreshKey={jobsVersion} role={role} onOpenJob={setSelectedJob} onCreateOpportunity={() => setShowCreateOpportunity(true)} onSeeAll={() => setScreen('work')} onReviewQueue={() => setShowVerificationQueue(true)} />;
-  }, [role, screen, themeMode, chatConversationId, startConversation, accountProfile, user, jobsVersion]);
+  }, [role, screen, themeMode, chatConversationId, startConversation, accountProfile, user, jobsVersion, unreadByConversation, refreshNotificationCounts]);
 
   // Keep this after every hook. Clerk changes `isLoaded` as it initializes,
   // so returning before `useMemo` would change the hook order between renders.
@@ -970,10 +1018,10 @@ export default function Index() {
   return (
     <AppThemeContext.Provider value={theme}>
     <View style={[styles.app, { paddingTop: topPadding }]}>
-      <AppHeader role={role} onRolePicker={() => setShowRoles(true)} onNotifications={() => setShowNotifications(true)} onTracking={() => { setTrackingJobId(null); setShowTracking(true); }} />
+      <AppHeader role={role} unreadNotificationCount={unreadNotificationCount} onRolePicker={() => setShowRoles(true)} onNotifications={() => setShowNotifications(true)} onTracking={() => { setTrackingJobId(null); setShowTracking(true); }} />
       <View style={styles.appInner}>{content}</View>
       {showRoles ? <RolePicker role={role} canAccessAdmin={canAccessAdmin} onSelect={switchRole} onClose={() => setShowRoles(false)} /> : null}
-      <View style={{ paddingBottom: bottomPadding }}><BottomNav role={role} tab={activeTab} onChange={setScreen} /></View>
+      <View style={{ paddingBottom: bottomPadding }}><BottomNav role={role} tab={activeTab} unreadChatCount={Object.values(unreadByConversation).reduce((total, count) => total + count, 0)} onChange={setScreen} /></View>
       <ActionModal visible={Boolean(actionModal)} title={actionModal?.title ?? ''} message={actionModal?.message ?? ''} onClose={() => setActionModal(null)} />
       <AddressBookModal visible={showAddresses} onClose={() => setShowAddresses(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <ProfileEditorModal visible={showProfileEditor} onClose={() => setShowProfileEditor(false)} onSaved={setAccountProfile} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
@@ -983,7 +1031,7 @@ export default function Index() {
       <PayoutSettingsModal visible={showPayoutSettings} onClose={() => setShowPayoutSettings(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <AvailabilityModal visible={showAvailability} onClose={() => setShowAvailability(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <SupportModal visible={showSupport} onClose={() => setShowSupport(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} isAdmin={role === 'admin'} />
-      <NotificationsModal visible={showNotifications} onClose={() => setShowNotifications(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} onOpenConversation={(id) => { setChatConversationId(id); setScreen('chat'); }} onOpenJob={(id) => void openJobFromNotification(id)} onOpenSupport={() => setShowSupport(true)} />
+      <NotificationsModal visible={showNotifications} onClose={() => { setShowNotifications(false); void refreshNotificationCounts(); }} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} onCountsChanged={refreshNotificationCounts} onOpenConversation={(id) => { setChatConversationId(id); setScreen('chat'); }} onOpenJob={(id) => void openJobFromNotification(id)} onOpenSupport={() => setShowSupport(true)} />
       <JobProposalModal onTrackJob={(id) => { setSelectedJob(null); setTrackingJobId(id); setShowTracking(true); }} visible={Boolean(selectedJob)} job={selectedJob} role={role} userId={user?.id} email={user?.primaryEmailAddress?.emailAddress || ''} onClose={() => setSelectedJob(null)} onStartConversation={startConversation} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <AdminPaymentTransfersModal visible={showAdminPaymentTransfers} onClose={() => setShowAdminPaymentTransfers(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} />
       <GuildsModal visible={showGuilds} onClose={() => setShowGuilds(false)} getToken={getToken} palette={themeMode === 'light' ? colors.light : colors.dark} isAdmin={role === 'admin'} />
@@ -1018,6 +1066,8 @@ function createStyles(activePalette: Palette) {
   brandAccent: { color: accentText },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   iconButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: panel, alignItems: 'center', justifyContent: 'center' },
+  countBadge: { minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, backgroundColor: '#e34343', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: ink, position: 'absolute', right: -5, top: -5 },
+  countBadgeText: { color: '#fff', fontSize: 9, lineHeight: 12, fontFamily: 'Inter_700Bold' },
   iconButtonActive: { backgroundColor: lime },
   roleBadge: { width: 38, height: 38, borderRadius: 19, backgroundColor: lime, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },

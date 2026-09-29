@@ -1,12 +1,15 @@
 import { requireSupabase } from "./supabase";
 
 export async function createNotification(userId: string, title: string, body: string, data: Record<string, unknown> = {}) {
-  const { error } = await requireSupabase().from("user_notifications").insert({ user_id: userId, title, body, data });
+  const { data: notification, error } = await requireSupabase().from("user_notifications").insert({ user_id: userId, title, body, data }).select("id").single();
   if (error) throw error;
   try {
-    const { data: tokens, error: tokenError } = await requireSupabase().from("expo_push_tokens").select("expo_push_token").eq("user_id", userId);
+    const { data: tokens, error: tokenError } = await requireSupabase().from("expo_push_tokens").select("expo_push_token,platform").eq("user_id", userId);
     if (tokenError) throw tokenError;
     if (!tokens?.length) return;
+    const { count: badgeCount, error: countError } = await requireSupabase().from("user_notifications")
+      .select("id", { count: "exact", head: true }).eq("user_id", userId).is("read_at", null);
+    if (countError) throw countError;
     for (let offset = 0; offset < tokens.length; offset += 100) {
       const batch = tokens.slice(offset, offset + 100);
       const response = await fetch("https://exp.host/--/api/v2/push/send", {
@@ -16,7 +19,16 @@ export async function createNotification(userId: string, title: string, body: st
           Accept: "application/json",
           ...(process.env.EXPO_ACCESS_TOKEN ? { Authorization: `Bearer ${process.env.EXPO_ACCESS_TOKEN}` } : {}),
         },
-        body: JSON.stringify(batch.map(({ expo_push_token }) => ({ to: expo_push_token, title, body: title === "New message" ? "Open Handyskillz to read your message." : body, data, sound: "default", priority: "high" }))),
+        body: JSON.stringify(batch.map(({ expo_push_token, platform }) => ({
+          to: expo_push_token,
+          title,
+          body: title === "New message" ? "Open Handyskillz to read your message." : body,
+          data: { ...data, notificationId: notification.id },
+          sound: "default",
+          priority: "high",
+          channelId: "default",
+          ...(platform === "ios" ? { badge: badgeCount ?? 1 } : {}),
+        }))),
         signal: AbortSignal.timeout(8000),
       });
       if (!response.ok) throw new Error(`Expo push service returned HTTP ${response.status}`);

@@ -1,17 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import colors from '@/constants/colors';
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: true }),
-});
 
 type Palette = typeof colors.dark;
 type NotificationItem = { id: string; title: string; body: string; data: Record<string, unknown>; read_at: string | null; created_at: string };
 
-export default function NotificationsModal({ visible, onClose, getToken, palette, onOpenConversation, onOpenJob, onOpenSupport }: {
-  visible: boolean; onClose: () => void; getToken: () => Promise<string | null>; palette: Palette; onOpenConversation: (id: string) => void; onOpenJob: (id: string) => void; onOpenSupport: () => void;
+export default function NotificationsModal({ visible, onClose, getToken, palette, onCountsChanged, onOpenConversation, onOpenJob, onOpenSupport }: {
+  visible: boolean; onClose: () => void; getToken: () => Promise<string | null>; palette: Palette; onCountsChanged: () => void; onOpenConversation: (id: string) => void; onOpenJob: (id: string) => void; onOpenSupport: () => void;
 }) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -43,12 +40,12 @@ export default function NotificationsModal({ visible, onClose, getToken, palette
     setBusy(true); setError('');
     try {
       if (Platform.OS === 'web') throw new Error('Remote push notifications are available in the iOS and Android app.');
-      const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim();
+      const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim() || Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
       if (!projectId) throw new Error('Set EXPO_PUBLIC_EAS_PROJECT_ID to your EAS project ID, then rebuild the native app.');
       let permission = await Notifications.getPermissionsAsync();
-      if (permission.status !== 'granted') permission = await Notifications.requestPermissionsAsync();
+      if (permission.status !== 'granted') permission = await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: true, allowSound: true } });
       if (permission.status !== 'granted') throw new Error('Allow notifications in your device settings to enable push alerts.');
-      if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('default', { name: 'Handyskillz updates', importance: Notifications.AndroidImportance.DEFAULT });
+      if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('default', { name: 'General and chat', importance: Notifications.AndroidImportance.MAX, vibrationPattern: [0, 250, 250, 250], sound: 'default' });
       const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
       await request('/notifications/push-token', { method: 'POST', body: JSON.stringify({ token, platform: Platform.OS }) });
       setPushEnabled(true);
@@ -58,7 +55,7 @@ export default function NotificationsModal({ visible, onClose, getToken, palette
   const disablePush = async () => {
     setBusy(true); setError('');
     try {
-      const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim();
+      const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim() || Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
       if (!projectId || Platform.OS === 'web') throw new Error('Push notification registration is unavailable on this device.');
       const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
       await request('/notifications/push-token', { method: 'DELETE', body: JSON.stringify({ token }) });
@@ -68,12 +65,13 @@ export default function NotificationsModal({ visible, onClose, getToken, palette
   };
   const markAllRead = async () => {
     setBusy(true); setError('');
-    try { await request('/notifications/read-all', { method: 'POST' }); await load(); }
+    try { await request('/notifications/read-all', { method: 'POST' }); onCountsChanged(); await load(); }
     catch (readError) { setError(readError instanceof Error ? readError.message : 'Could not update notifications.'); setBusy(false); }
   };
   const openItem = async (item: NotificationItem) => {
     try {
       if (!item.read_at) await request(`/notifications/${encodeURIComponent(item.id)}/read`, { method: 'PATCH' });
+      onCountsChanged();
       if (typeof item.data?.conversationId === 'string') { onClose(); onOpenConversation(item.data.conversationId); }
       else if (typeof item.data?.jobId === 'string') { onClose(); onOpenJob(item.data.jobId); }
       else if (typeof item.data?.ticketId === 'string') { onClose(); onOpenSupport(); }
@@ -83,7 +81,7 @@ export default function NotificationsModal({ visible, onClose, getToken, palette
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
     <View style={styles.backdrop}><View style={[styles.sheet, { backgroundColor: palette.card }]}>
       <View style={[styles.handle, { backgroundColor: palette.mutedForeground }]} />
-      <View style={styles.header}><View><Text style={[styles.title, { color: palette.foreground }]}>Notifications</Text><Text style={[styles.subtitle, { color: palette.mutedForeground }]}>Messages and support updates for your account.</Text></View><Pressable onPress={onClose}><Text style={[styles.close, { color: palette.tint }]}>Done</Text></Pressable></View>
+      <View style={styles.header}><View><Text style={[styles.title, { color: palette.foreground }]}>Notifications</Text><Text style={[styles.subtitle, { color: palette.mutedForeground }]}>Chat messages and important account updates.</Text></View><Pressable onPress={onClose}><Text style={[styles.close, { color: palette.tint }]}>Done</Text></Pressable></View>
       <Pressable disabled={busy || Platform.OS === 'web'} onPress={() => void (pushEnabled ? disablePush() : enablePush())} style={[styles.pushToggle, { borderColor: palette.border }]}><Text style={[styles.pushToggleText, { color: palette.foreground }]}>{Platform.OS === 'web' ? 'Push alerts are available in the iOS and Android app' : pushEnabled ? 'Turn off device push alerts' : 'Enable device push alerts'}</Text></Pressable>
       {items.some((item) => !item.read_at) ? <Pressable disabled={busy} onPress={() => void markAllRead()}><Text style={[styles.markRead, { color: palette.tint }]}>Mark all as read</Text></Pressable> : null}
       <ScrollView contentContainerStyle={styles.content}>

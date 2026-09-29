@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useSignUp } from '@clerk/expo';
 import { Link, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ export default function SignUpScreen() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [code, setCode] = useState('');
   const [message, setMessage] = useState('');
 
@@ -94,7 +96,12 @@ export default function SignUpScreen() {
             <Text style={styles.label}>Email address</Text>
             <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="you@example.com" placeholderTextColor={muted} style={styles.input} />
             <Text style={styles.label}>Password</Text>
-            <TextInput value={password} onChangeText={setPassword} secureTextEntry placeholder="At least 8 characters" placeholderTextColor={muted} style={styles.input} />
+            <View style={styles.passwordField}>
+              <TextInput value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoComplete="new-password" placeholder="At least 8 characters" placeholderTextColor={muted} style={[styles.input, styles.passwordInput]} />
+              <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} onPress={() => setShowPassword((visible) => !visible)} style={styles.passwordToggle} hitSlop={10}>
+                <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={muted} />
+              </Pressable>
+            </View>
             <View nativeID="clerk-captcha" />
             <Pressable testID="sign-up-submit" onPress={start} disabled={!email || !password || fetchStatus === 'fetching'} style={({ pressed }) => [styles.primaryButton, (!email || !password) && styles.disabled, pressed && styles.pressed]}>
               <Text style={styles.primaryButtonText}>{fetchStatus === 'fetching' ? 'Creating…' : 'Create account'}</Text>
@@ -121,6 +128,9 @@ const styles = StyleSheet.create({
   form: { backgroundColor: panel, borderRadius: 22, padding: 16, marginTop: 18, gap: 9 },
   label: { color: text, fontSize: 11, fontFamily: 'Inter_600SemiBold', marginTop: 3 },
   input: { height: 50, borderRadius: 14, backgroundColor: '#2a2c29', color: text, paddingHorizontal: 14, fontSize: 13, fontFamily: 'Inter_400Regular', marginBottom: 4 },
+  passwordField: { position: 'relative', justifyContent: 'center' },
+  passwordInput: { paddingRight: 48 },
+  passwordToggle: { position: 'absolute', right: 13, top: 0, height: 50, width: 30, alignItems: 'center', justifyContent: 'center' },
   primaryButton: { height: 52, borderRadius: 26, backgroundColor: lime, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   primaryButtonText: { color: ink, fontSize: 13, fontFamily: 'Inter_700Bold' },
   secondaryAction: { color: lime, textAlign: 'center', fontSize: 12, fontFamily: 'Inter_600SemiBold', paddingVertical: 10 },
