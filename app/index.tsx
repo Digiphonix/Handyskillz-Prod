@@ -806,8 +806,13 @@ export default function Index() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Could not load notification counts.');
       const count = Math.max(0, Number(payload.total) || 0);
-      setUnreadNotificationCount(count);
-      setUnreadByConversation(payload.conversations && typeof payload.conversations === 'object' ? payload.conversations : {});
+      const conversations: Record<string, number> = payload.conversations && typeof payload.conversations === 'object' ? payload.conversations : {};
+      setUnreadNotificationCount((previous) => previous === count ? previous : count);
+      setUnreadByConversation((previous) => {
+        const previousIds = Object.keys(previous);
+        const nextIds = Object.keys(conversations);
+        return previousIds.length === nextIds.length && nextIds.every((id) => previous[id] === conversations[id]) ? previous : conversations;
+      });
       if (Platform.OS !== 'web') await Notifications.setBadgeCountAsync(count).catch(() => false);
     } catch { /* Notification counts can refresh on the next foreground sync. */ }
   }, [getToken, isLoaded, isSignedIn, user?.id]);

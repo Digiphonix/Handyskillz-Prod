@@ -1,35 +1,41 @@
 import { formatListingPrice } from '@/constants/listings';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import colors from '@/constants/colors';
 type Palette = typeof colors.dark;
 type Props = { getToken: () => Promise<string | null>; palette: Palette; onOpenJob: (job: any) => void; postedBy?: string; search?: string; limit?: number; refreshKey?: number };
 
 export function JobListings({ getToken, palette, onOpenJob, postedBy, search = '', limit = 3, refreshKey = 0 }: Props) {
+  const getTokenRef = useRef(getToken);
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
+  useEffect(() => { getTokenRef.current = getToken; }, [getToken]);
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 75000);
     setLoading(true); setError(''); setJobs([]);
     void (async () => {
       try {
         const base = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
         if (!base) throw new Error('Job service is not configured.');
-        const token = await getToken();
+        const token = await getTokenRef.current();
         if (!token) throw new Error('Sign in to view jobs.');
         const params = new URLSearchParams({ status: 'open', search });
         if (postedBy) params.set('postedBy', postedBy);
-        const response = await fetch(`${base}/api/jobs?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+        const response = await fetch(`${base}/api/jobs?${params}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not load jobs.');
-        if (!cancelled) setJobs(payload.jobs || []);
-      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load jobs.'); }
-      finally { if (!cancelled) setLoading(false); }
+        if (!cancelled) setJobs(Array.isArray(payload.jobs) ? payload.jobs : []);
+      } catch (e) {
+        if (!cancelled) setError(controller.signal.aborted ? 'Loading opportunities timed out. Check your connection and retry.' : e instanceof Error ? e.message : 'Could not load jobs.');
+      }
+      finally { clearTimeout(timeout); if (!cancelled) setLoading(false); }
     })();
-    return () => { cancelled = true; };
-  }, [postedBy, search, refreshKey, retry, getToken]);
+    return () => { cancelled = true; clearTimeout(timeout); controller.abort(); };
+  }, [postedBy, search, refreshKey, retry]);
   return <View style={styles.list}>
     {loading ? <ActivityIndicator color={palette.tint} /> : null}
     {jobs.slice(0, limit).map((job) => <Pressable accessibilityRole="button" key={job.id} onPress={() => onOpenJob(job)} style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
