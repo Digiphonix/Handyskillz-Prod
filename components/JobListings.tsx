@@ -12,8 +12,6 @@ export function JobListings({ getToken, palette, onOpenJob, postedBy, search = '
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 75000);
     setLoading(true); setError(''); setJobs([]);
     void (async () => {
       try {
@@ -23,16 +21,14 @@ export function JobListings({ getToken, palette, onOpenJob, postedBy, search = '
         if (!token) throw new Error('Sign in to view jobs.');
         const params = new URLSearchParams({ status: 'open', search });
         if (postedBy) params.set('postedBy', postedBy);
-        const response = await fetch(`${base}/api/jobs?${params}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
+        const response = await fetch(`${base}/api/jobs?${params}`, { headers: { Authorization: `Bearer ${token}` } });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not load jobs.');
-        if (!cancelled) setJobs(Array.isArray(payload.jobs) ? payload.jobs : []);
-      } catch (e) {
-        if (!cancelled) setError(controller.signal.aborted ? 'Loading opportunities timed out. Check your connection and retry.' : e instanceof Error ? e.message : 'Could not load jobs.');
-      }
-      finally { clearTimeout(timeout); if (!cancelled) setLoading(false); }
+        if (!cancelled) setJobs(payload.jobs || []);
+      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load jobs.'); }
+      finally { if (!cancelled) setLoading(false); }
     })();
-    return () => { cancelled = true; clearTimeout(timeout); controller.abort(); };
+    return () => { cancelled = true; };
   }, [postedBy, search, refreshKey, retry, getToken]);
   return <View style={styles.list}>
     {loading ? <ActivityIndicator color={palette.tint} /> : null}
