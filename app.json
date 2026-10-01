@@ -25,6 +25,7 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/with-optional-amazon-hardware",
       "expo-image-picker",
       [
         "expo-notifications",
